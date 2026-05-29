@@ -2,6 +2,9 @@
 
 ## 2026-05-29
 
+- Decoupled `CodexBridge` from FanControl by integrating `LibreHardwareMonitorLib` directly into the C# project to query CPU, GPU, and motherboard sensors natively. The bridge is now fully autonomous and does not require FanControl to be running.
+- Updated `Install-CodexMonitor.ps1` and `Watch-PrimaryDisplay.ps1` to compile the bridge using `dotnet publish` (with `-r win-x64` and `--self-contained false`) to copy all required NuGet DLL files (`LibreHardwareMonitorLib.dll`, etc.) to the target directory.
+- Created `docs/DEPENDENCY_ANALYSIS.md` evaluating third-party dependencies and documenting simplification strategies.
 - Made background Git auto-update failures visible to users with Windows notifications instead of silently swallowing failed fetch, pull, build, copy, task restart, or Rainmeter refresh steps.
 - Created a dependency upgrade helper script `Deploy/Upgrade-Prerequisites-And-Apps.ps1` to stop active services safely, perform `winget` upgrades, and restore executing widgets. Added an `-Auto` switch to close the console automatically when done.
 - Added daily winget upgrade checks in `Watch-PrimaryDisplay.ps1` that display an interactive GUI prompt to automatically run updates without manual terminal commands.

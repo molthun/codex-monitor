@@ -95,7 +95,9 @@ function Check-ForUpdates {
 
             # Rebuild the bridge
             if (Test-Command "dotnet") {
-                Invoke-CheckedCommand -Description "CodexBridge build" -Command { dotnet build (Join-Path $InstallRoot "CodexBridge\CodexBridge.csproj") -c Release }
+                $bridgeProj = Join-Path $InstallRoot "CodexBridge\CodexBridge.csproj"
+                $outDir = Join-Path $InstallRoot "CodexBridge\bin\Release\net10.0"
+                Invoke-CheckedCommand -Description "CodexBridge publish" -Command { dotnet publish $bridgeProj -c Release -r win-x64 --self-contained false -o $outDir }
             }
             else {
                 throw "The .NET SDK is not available, so CodexBridge could not be rebuilt."

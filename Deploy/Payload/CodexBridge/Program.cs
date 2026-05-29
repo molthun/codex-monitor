@@ -4,7 +4,7 @@ using System.Net.NetworkInformation;
 using System.Text;
 using System.Text.Json;
 using System.Linq;
-using FanControl.IPC;
+using LibreHardwareMonitor.Hardware;
 
 var configPath = GetArgValue(args, "--config")
     ?? Environment.GetEnvironmentVariable("CODEXMONITOR_CONFIG")
@@ -23,101 +23,135 @@ if (!createdNew && !onceMode)
     return;
 }
 
-    var sensorClient = IPCFactory.GetSensorClient();
-    var lastErrorLog = DateTime.MinValue;
-    var networkPrevious = new Dictionary<string, (long Received, long Sent)>(StringComparer.OrdinalIgnoreCase);
-    var networkPreviousAt = DateTime.UtcNow;
+// Initialize LibreHardwareMonitor
+var computer = new Computer
+{
+    IsCpuEnabled = true,
+    IsGpuEnabled = true,
+    IsMotherboardEnabled = true,
+    IsControllerEnabled = true,
+    IsMemoryEnabled = false,
+    IsStorageEnabled = false
+};
 
-    do
+try
+{
+    computer.Open();
+}
+catch (Exception ex)
+{
+    File.AppendAllText(Path.Combine(root, "CodexBridge.error.log"), $"{DateTime.Now:u} Failed to open LibreHardwareMonitor: {ex}\n");
+}
+
+var lastErrorLog = DateTime.MinValue;
+var networkPrevious = new Dictionary<string, (long Received, long Sent)>(StringComparer.OrdinalIgnoreCase);
+var networkPreviousAt = DateTime.UtcNow;
+
+do
+{
+    try
     {
-        try
+        var sensors = new List<SimpleSensor>();
+        foreach (var hardware in computer.Hardware)
         {
-            if (sensorClient == null)
+            GetSensorsRecursive(hardware, sensors);
+        }
+
+        if (dumpMode)
+        {
+            Console.WriteLine($"{"HardwareType",-15} | {"HardwareName",-25} | {"SensorType",-15} | {"Value",-8} | {"SensorName",-25} | {"Identifier"}");
+            Console.WriteLine(new string('-', 110));
+            foreach (var sensor in sensors)
             {
-                sensorClient = IPCFactory.GetSensorClient();
+                Console.WriteLine($"{sensor.HardwareType,-15} | {sensor.HardwareName,-25} | {sensor.Type,-15} | {sensor.Value,8:0.##} | {sensor.Name,-25} | {sensor.Identifier}");
             }
-            var sensorsReply = await sensorClient.GetAllSensorsAsync(new GetAllSensorsRequest());
-            var sensors = sensorsReply.Sensors
-                .Where(s => s.HasValue)
-                .OrderBy(s => s.Type.ToString())
-                .ThenBy(s => s.Name)
+            computer.Close();
+            return;
+        }
+
+        // 1. CPU Temperature
+        var cpuTempSensor = sensors.FirstOrDefault(s => s.HardwareType == HardwareType.Cpu && s.Type == SensorType.Temperature && s.Name.Contains("Core (Average)", StringComparison.OrdinalIgnoreCase))
+            ?? sensors.FirstOrDefault(s => s.HardwareType == HardwareType.Cpu && s.Type == SensorType.Temperature && s.Name.Contains("Package", StringComparison.OrdinalIgnoreCase))
+            ?? sensors.FirstOrDefault(s => s.HardwareType == HardwareType.Cpu && s.Type == SensorType.Temperature && s.Name.Contains("Core", StringComparison.OrdinalIgnoreCase))
+            ?? sensors.FirstOrDefault(s => s.HardwareType == HardwareType.Cpu && s.Type == SensorType.Temperature);
+        var cpuTemp = cpuTempSensor?.Value;
+
+        // 2. CPU Fan RPM (Usually under motherboard HardwareType as Fan)
+        var cpuFanSensor = sensors.FirstOrDefault(s => s.HardwareType == HardwareType.Motherboard && s.Type == SensorType.Fan && s.Name.Contains("CPU", StringComparison.OrdinalIgnoreCase))
+            ?? sensors.FirstOrDefault(s => s.Type == SensorType.Fan && s.Name.Contains("CPU", StringComparison.OrdinalIgnoreCase))
+            ?? sensors.FirstOrDefault(s => s.HardwareType == HardwareType.Motherboard && s.Type == SensorType.Fan);
+        var cpuFan = cpuFanSensor?.Value;
+
+        // 3. GPU Sensors
+        var isGpu = new Func<SimpleSensor, bool>(s => s.HardwareType == HardwareType.GpuNvidia || s.HardwareType == HardwareType.GpuAmd || s.HardwareType == HardwareType.GpuIntel);
+        
+        var gpuCoreSensor = sensors.FirstOrDefault(s => isGpu(s) && s.Type == SensorType.Temperature && s.Name.Contains("GPU Core", StringComparison.OrdinalIgnoreCase))
+            ?? sensors.FirstOrDefault(s => isGpu(s) && s.Type == SensorType.Temperature && s.Name.Contains("Core", StringComparison.OrdinalIgnoreCase))
+            ?? sensors.FirstOrDefault(s => isGpu(s) && s.Type == SensorType.Temperature);
+        var gpuCore = gpuCoreSensor?.Value;
+
+        var gpuHotspotSensor = sensors.FirstOrDefault(s => isGpu(s) && s.Type == SensorType.Temperature && s.Name.Contains("Hot Spot", StringComparison.OrdinalIgnoreCase));
+        var gpuHotspot = gpuHotspotSensor?.Value;
+
+        var gpuMemorySensor = sensors.FirstOrDefault(s => isGpu(s) && s.Type == SensorType.Temperature && (s.Name.Contains("GPU Memory", StringComparison.OrdinalIgnoreCase) || s.Name.Contains("Memory", StringComparison.OrdinalIgnoreCase)));
+        var gpuMemory = gpuMemorySensor?.Value;
+
+        var gpuFanSensor = sensors.FirstOrDefault(s => isGpu(s) && s.Type == SensorType.Fan);
+        var gpuFan = gpuFanSensor?.Value;
+
+        var gpuFanPctSensor = sensors.FirstOrDefault(s => isGpu(s) && s.Type == SensorType.Control && s.Name.Contains("Fan", StringComparison.OrdinalIgnoreCase))
+            ?? sensors.FirstOrDefault(s => isGpu(s) && s.Type == SensorType.Load && s.Name.Contains("Fan", StringComparison.OrdinalIgnoreCase));
+        var gpuFanPct = gpuFanPctSensor?.Value;
+
+        var nvidiaGpu = QueryNvidiaSmi();
+        if (nvidiaGpu is not null)
+        {
+            gpuCore = nvidiaGpu.Value.Temp ?? gpuCore;
+            gpuFanPct = nvidiaGpu.Value.FanPct ?? gpuFanPct;
+        }
+
+        // 4. Board/System Fans (Excluding CPU fan & GPU fan)
+        var boardFansArray = new float?[7];
+        var boardFanPrefix = config.BridgeBoardFanIdentifierPrefix;
+
+        if (!string.IsNullOrEmpty(boardFanPrefix))
+        {
+            for (int i = 0; i < 7; i++)
+            {
+                var match = sensors.FirstOrDefault(s => s.Identifier.Equals(boardFanPrefix + i, StringComparison.OrdinalIgnoreCase) || s.Identifier.Equals(boardFanPrefix + "fan" + i, StringComparison.OrdinalIgnoreCase));
+                if (match != null)
+                {
+                    boardFansArray[i] = match.Value;
+                }
+            }
+        }
+
+        // If prefix didn't match or wasn't provided, auto-map any motherboard fans not assigned to CPU/GPU
+        if (boardFansArray.All(f => !f.HasValue))
+        {
+            var otherRpmSensors = sensors
+                .Where(s => s.HardwareType == HardwareType.Motherboard && s.Type == SensorType.Fan)
+                .Where(s => s.Identifier != cpuFanSensor?.Identifier && s.Identifier != gpuFanSensor?.Identifier)
+                .OrderBy(s => s.Name)
+                .Take(7)
                 .ToList();
 
-            if (dumpMode)
+            for (int i = 0; i < 7; i++)
             {
-                foreach (var sensor in sensors)
+                if (i < otherRpmSensors.Count)
                 {
-                    Console.WriteLine($"{sensor.Type,-12} | {sensor.Value,8:0.##} | {sensor.Name} | {sensor.Identifier} | {sensor.Origin}");
-                }
-                return;
-            }
-
-            var cpuTempSensor = PickSensor(sensors, SensorMessageType.Temperature, "cpu", "package")
-                ?? PickSensor(sensors, SensorMessageType.Temperature, "cpu")
-                ?? PickSensor(sensors, SensorMessageType.Temperature, "processor");
-            var cpuTemp = cpuTempSensor?.Value;
-
-            var cpuFanSensor = PickSensor(sensors, SensorMessageType.Rpm, "cpu")
-                ?? PickSensor(sensors, SensorMessageType.Rpm, "processor")
-                ?? PickSensor(sensors, SensorMessageType.Rpm, "cpu_fan")
-                ?? PickSensor(sensors, SensorMessageType.Rpm, "/lpc/nct6796dr/fan/0")
-                ?? PickSensor(sensors, SensorMessageType.Rpm, "fan #1")
-                ?? PickSensor(sensors, SensorMessageType.Rpm, "fan 1");
-            var cpuFan = cpuFanSensor?.Value;
-
-            var gpuCoreSensor = PickSensor(sensors, SensorMessageType.Temperature, "nvidia", "gpu")
-                ?? PickSensor(sensors, SensorMessageType.Temperature, "gpu", "core")
-                ?? PickSensor(sensors, SensorMessageType.Temperature, "gpu");
-            var gpuCore = gpuCoreSensor?.Value;
-
-            var gpuHotspotSensor = PickSensor(sensors, SensorMessageType.Temperature, "gpu", "hot");
-            var gpuHotspot = gpuHotspotSensor?.Value;
-
-            var gpuMemorySensor = PickSensor(sensors, SensorMessageType.Temperature, "gpu", "memory");
-            var gpuMemory = gpuMemorySensor?.Value;
-
-            var gpuFanSensor = PickSensor(sensors, SensorMessageType.Rpm, "nvidia")
-                ?? PickSensor(sensors, SensorMessageType.Rpm, "gpu");
-            var gpuFan = gpuFanSensor?.Value;
-
-            var gpuFanPctSensor = PickSensor(sensors, SensorMessageType.UsagePercent, "gpu", "fan")
-                ?? PickSensor(sensors, SensorMessageType.Control, "gpu", "fan")
-                ?? PickSensor(sensors, SensorMessageType.Control, "nvidia")
-                ?? PickSensor(sensors, SensorMessageType.UsagePercent, "gpu");
-            var gpuFanPct = gpuFanPctSensor?.Value;
-
-            var nvidiaGpu = QueryNvidiaSmi();
-            if (nvidiaGpu is not null)
-            {
-                gpuCore = nvidiaGpu.Value.Temp ?? gpuCore;
-                gpuFanPct = nvidiaGpu.Value.FanPct ?? gpuFanPct;
-            }
-
-            var boardFanPrefix = config.BridgeBoardFanIdentifierPrefix ?? "/lpc/nct6796dr/fan/";
-            var boardFans = Enumerable.Range(0, 7)
-                .Select(i => PickByIdentifier(sensors, SensorMessageType.Rpm, $"{boardFanPrefix}{i}"))
-                .ToArray();
-
-            if (boardFans.All(f => !f.HasValue))
-            {
-                var otherRpmSensors = sensors
-                    .Where(s => s.Type == SensorMessageType.Rpm)
-                    .Where(s => s.Identifier != cpuFanSensor?.Identifier && s.Identifier != gpuFanSensor?.Identifier)
-                    .Take(7)
-                    .ToList();
-
-                for (int i = 0; i < 7; i++)
-                {
-                    if (i < otherRpmSensors.Count)
-                    {
-                        boardFans[i] = otherRpmSensors[i].Value;
-                    }
+                    boardFansArray[i] = otherRpmSensors[i].Value;
                 }
             }
+        }
 
-            var psuFan = Pick(sensors, SensorMessageType.Rpm, "psu")
-                ?? Pick(sensors, SensorMessageType.Rpm, "power supply");
-            var network = QueryNetworkRates(networkPrevious, ref networkPreviousAt, config);
+        // 5. PSU Fan
+        var psuFanSensor = sensors.FirstOrDefault(s => s.HardwareType == HardwareType.Psu && s.Type == SensorType.Fan)
+            ?? sensors.FirstOrDefault(s => s.Type == SensorType.Fan && s.Name.Contains("PSU", StringComparison.OrdinalIgnoreCase));
+        var psuFan = psuFanSensor?.Value;
+
+        // 6. Network Rates
+        var network = QueryNetworkRates(networkPrevious, ref networkPreviousAt, config);
 
         var content = new StringBuilder()
             .AppendLine($"CPU={Round(cpuTemp)}")
@@ -127,13 +161,13 @@ if (!createdNew && !onceMode)
             .AppendLine($"GPUFan={Round(gpuFan)}")
             .AppendLine($"GPUFanPct={Round(gpuFanPct)}")
             .AppendLine($"CPUFan={Round(cpuFan)}")
-            .AppendLine($"BoardFan1={Round(boardFans[0])}")
-            .AppendLine($"BoardFan2={Round(boardFans[1])}")
-            .AppendLine($"BoardFan3={Round(boardFans[2])}")
-            .AppendLine($"BoardFan4={Round(boardFans[3])}")
-            .AppendLine($"BoardFan5={Round(boardFans[4])}")
-            .AppendLine($"BoardFan6={Round(boardFans[5])}")
-            .AppendLine($"BoardFan7={Round(boardFans[6])}")
+            .AppendLine($"BoardFan1={Round(boardFansArray[0])}")
+            .AppendLine($"BoardFan2={Round(boardFansArray[1])}")
+            .AppendLine($"BoardFan3={Round(boardFansArray[2])}")
+            .AppendLine($"BoardFan4={Round(boardFansArray[3])}")
+            .AppendLine($"BoardFan5={Round(boardFansArray[4])}")
+            .AppendLine($"BoardFan6={Round(boardFansArray[5])}")
+            .AppendLine($"BoardFan7={Round(boardFansArray[6])}")
             .AppendLine($"PSUFan={Round(psuFan)}")
             .AppendLine($"NetEthInMbps={network.EthInMbps.ToString("0.0", CultureInfo.InvariantCulture)}")
             .AppendLine($"NetEthOutMbps={network.EthOutMbps.ToString("0.0", CultureInfo.InvariantCulture)}")
@@ -146,7 +180,7 @@ if (!createdNew && !onceMode)
             .AppendLine($"NetWifiActiveOutMbps={network.WifiActiveOutMbps.ToString("0.0", CultureInfo.InvariantCulture)}")
             .AppendLine($"NetWifiActiveDlMbps={network.WifiActiveDlMbps.ToString("0.0", CultureInfo.InvariantCulture)}")
             .AppendLine($"NetWifiActiveUlMbps={network.WifiActiveUlMbps.ToString("0.0", CultureInfo.InvariantCulture)}")
-            .AppendLine($"BridgeSource=FanControl{(nvidiaGpu is null ? "" : "+NvidiaSmi")}")
+            .AppendLine($"BridgeSource=LibreHardwareMonitor{(nvidiaGpu is null ? "" : "+NvidiaSmi")}")
             .ToString();
 
         File.WriteAllText(outFile, content, Encoding.ASCII);
@@ -154,16 +188,6 @@ if (!createdNew && !onceMode)
     }
     catch (Exception ex)
     {
-        try
-        {
-            if (sensorClient is IDisposable disposable)
-            {
-                disposable.Dispose();
-            }
-        }
-        catch { }
-        sensorClient = null;
-
         if (DateTime.UtcNow - lastErrorLog > TimeSpan.FromMinutes(1))
         {
             File.AppendAllText(Path.Combine(root, "CodexBridge.error.log"), $"{DateTime.Now:u} {ex}\n");
@@ -175,12 +199,41 @@ if (!createdNew && !onceMode)
 
     if (onceMode)
     {
+        computer.Close();
         return;
     }
 
     await Task.Delay(TimeSpan.FromSeconds(config.BridgeUpdateSeconds ?? 1));
 }
 while (true);
+
+static void GetSensorsRecursive(IHardware hardware, List<SimpleSensor> list)
+{
+    try
+    {
+        hardware.Update();
+        foreach (var sub in hardware.SubHardware)
+        {
+            GetSensorsRecursive(sub, list);
+        }
+        foreach (var sensor in hardware.Sensors)
+        {
+            list.Add(new SimpleSensor
+            {
+                Name = sensor.Name,
+                Identifier = sensor.Identifier.ToString(),
+                Type = sensor.SensorType,
+                Value = sensor.Value,
+                HardwareName = hardware.Name,
+                HardwareType = hardware.HardwareType
+            });
+        }
+    }
+    catch
+    {
+        // Suppress driver/sensor read failures for specific hardware items
+    }
+}
 
 static string? GetArgValue(string[] args, string name)
 {
@@ -266,40 +319,6 @@ static void ApplyConfig(BridgeConfig config, string path)
     }
 }
 
-static float? Pick(IEnumerable<SensorMessage> sensors, SensorMessageType type, params string[] needles)
-{
-    return sensors
-        .Where(s => s.Type == type)
-        .Where(s =>
-        {
-            var text = $"{s.Name} {s.Identifier} {s.Origin}".ToLowerInvariant();
-            return needles.All(n => text.Contains(n.ToLowerInvariant()));
-        })
-        .Select(s => (float?)s.Value)
-        .FirstOrDefault();
-}
-
-static SensorMessage? PickSensor(IEnumerable<SensorMessage> sensors, SensorMessageType type, params string[] needles)
-{
-    return sensors
-        .Where(s => s.Type == type)
-        .Where(s =>
-        {
-            var text = $"{s.Name} {s.Identifier} {s.Origin}".ToLowerInvariant();
-            return needles.All(n => text.Contains(n.ToLowerInvariant()));
-        })
-        .FirstOrDefault();
-}
-
-static float? PickByIdentifier(IEnumerable<SensorMessage> sensors, SensorMessageType type, string identifier)
-{
-    return sensors
-        .Where(s => s.Type == type)
-        .Where(s => string.Equals(s.Identifier, identifier, StringComparison.OrdinalIgnoreCase))
-        .Select(s => (float?)s.Value)
-        .FirstOrDefault();
-}
-
 static string Round(float? value)
 {
     return value.HasValue
@@ -357,7 +376,7 @@ static void TryWriteNvidiaFallback(string outFile)
     }
     catch
     {
-        // The bridge should keep retrying FanControl even if the fallback fails.
+        // The bridge should keep retrying
     }
 }
 
@@ -543,6 +562,16 @@ static (double EthInMbps, double EthOutMbps, double WifiInMbps, double WifiOutMb
     var activeUl = activeMode == "AP" ? wifiApIn : activeOut;
 
     return (ethIn, ethOut, wifiIn, wifiOut, wifiApIn, wifiApOut, activeMode, activeIn, activeOut, activeDl, activeUl);
+}
+
+sealed class SimpleSensor
+{
+    public string Name { get; set; } = "";
+    public string Identifier { get; set; } = "";
+    public SensorType Type { get; set; }
+    public float? Value { get; set; }
+    public string HardwareName { get; set; } = "";
+    public HardwareType HardwareType { get; set; }
 }
 
 sealed class BridgeConfig

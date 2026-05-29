@@ -199,10 +199,11 @@ if (-not (Test-Path -LiteralPath $bridgeExe)) {
         throw "dotnet SDK/runtime is not available. Run Deploy\Install-Prerequisites-And-Restore.ps1 first."
     }
 
-    Write-Host "Building CodexBridge..."
-    & dotnet build $bridgeProject -c Release
+    Write-Host "Publishing CodexBridge..."
+    $outDir = Join-Path $bridgeTarget "bin\Release\net10.0"
+    & dotnet publish $bridgeProject -c Release -r win-x64 --self-contained false -o $outDir
     if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $bridgeExe)) {
-        throw "CodexBridge build failed."
+        throw "CodexBridge publish failed."
     }
 }
 
