@@ -20,6 +20,7 @@ namespace CodexBridge
         private RadioButton _rdo1080p = null!;
         private RadioButton _rdo4K = null!;
         private FlowLayoutPanel _pnlDrives = null!;
+        private FlowLayoutPanel _pnlNetworkAdapters = null!;
         private TextBox _txtNetworkExclusions = null!;
         private CheckBox _chkAutoUpdate = null!;
         private ComboBox _cmbUpdateRate = null!;
@@ -34,6 +35,7 @@ namespace CodexBridge
         private static readonly Color TextMuted = Color.FromArgb(166, 178, 188);
         private static readonly Color Accent = Color.FromArgb(0, 210, 230);
         private static readonly Color AccentSoft = Color.FromArgb(74, 226, 181);
+        private static readonly string[] NetworkRoles = { "Auto", "Ethernet", "Wi-Fi", "Wi-Fi hotspot", "Ignore" };
 
         public SettingsForm(string configPath)
         {
@@ -53,7 +55,7 @@ namespace CodexBridge
         private void InitializeComponent()
         {
             Text = "CodexMonitor Settings";
-            ClientSize = new Size(620, 690);
+            ClientSize = new Size(720, 760);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -65,13 +67,13 @@ namespace CodexBridge
             var header = new Panel
             {
                 Location = new Point(0, 0),
-                Size = new Size(620, 96),
+                Size = new Size(720, 96),
                 BackColor = Color.FromArgb(12, 16, 21)
             };
             header.Paint += (s, e) =>
             {
                 using var accentPen = new Pen(Accent, 2);
-                e.Graphics.DrawLine(accentPen, 0, 94, 620, 94);
+                e.Graphics.DrawLine(accentPen, 0, 94, 720, 94);
             };
 
             var title = new Label
@@ -86,7 +88,7 @@ namespace CodexBridge
             {
                 Text = "Choose what the desktop widget displays. CodexMonitor only monitors hardware; fan control stays with your BIOS, drivers, or existing tools.",
                 Location = new Point(24, 50),
-                Size = new Size(560, 38),
+                Size = new Size(660, 38),
                 Font = new Font("Segoe UI", 9.25f, FontStyle.Regular),
                 ForeColor = TextMuted
             };
@@ -97,25 +99,25 @@ namespace CodexBridge
             var body = new Panel
             {
                 Location = new Point(0, 96),
-                Size = new Size(620, 528),
+                Size = new Size(720, 600),
                 BackColor = Back
             };
             Controls.Add(body);
 
-            var profile = CreateCard(24, 18, 572, 96, "Widget size", "Auto follows the primary display. Use a fixed size only if you prefer a specific layout.");
+            var profile = CreateCard(24, 18, 672, 96, "Widget size", "Auto follows the primary display. Use a fixed size only if you prefer a specific layout.");
             _rdoAuto = CreateRadio("Auto, recommended", 18, 50, 160, true);
-            _rdo1080p = CreateRadio("Compact 1080p", 200, 50, 150, false);
-            _rdo4K = CreateRadio("Large 4K", 380, 50, 120, false);
+            _rdo1080p = CreateRadio("Compact 1080p", 240, 50, 150, false);
+            _rdo4K = CreateRadio("Large 4K", 460, 50, 120, false);
             profile.Controls.Add(_rdoAuto);
             profile.Controls.Add(_rdo1080p);
             profile.Controls.Add(_rdo4K);
             body.Controls.Add(profile);
 
-            var drives = CreateCard(24, 126, 572, 150, "Disk rows", "Pick up to three drives for the widget's disk rows. The first selected drive is shown first.");
+            var drives = CreateCard(24, 126, 672, 138, "Disk rows", "These drives are detected on this PC. A different PC will show its own local drives.");
             _pnlDrives = new FlowLayoutPanel
             {
                 Location = new Point(18, 58),
-                Size = new Size(536, 80),
+                Size = new Size(636, 68),
                 AutoScroll = true,
                 BackColor = Color.Transparent,
                 FlowDirection = FlowDirection.TopDown,
@@ -124,28 +126,38 @@ namespace CodexBridge
             drives.Controls.Add(_pnlDrives);
             body.Controls.Add(drives);
 
-            var network = CreateCard(24, 288, 572, 126, "Network adapters to ignore", "Leave the defaults unless virtual adapters appear in the widget instead of your real Ethernet or Wi-Fi.");
-            _txtNetworkExclusions = new TextBox
+            var network = CreateCard(24, 276, 672, 240, "Network display", "Choose how active adapters are counted. Use Ignore for virtual, VPN, Bluetooth, or test adapters.");
+            _pnlNetworkAdapters = new FlowLayoutPanel
             {
                 Location = new Point(18, 58),
-                Size = new Size(536, 25),
+                Size = new Size(636, 112),
+                AutoScroll = true,
+                BackColor = Color.Transparent,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false
+            };
+            var advancedNetworkLabel = new Label
+            {
+                Text = "Advanced ignore words",
+                Location = new Point(18, 178),
+                Size = new Size(180, 20),
+                ForeColor = TextMuted,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Regular)
+            };
+            _txtNetworkExclusions = new TextBox
+            {
+                Location = new Point(18, 202),
+                Size = new Size(636, 25),
                 BackColor = Color.FromArgb(38, 44, 50),
                 ForeColor = TextMain,
                 BorderStyle = BorderStyle.FixedSingle
             };
-            var activeAdapters = new Label
-            {
-                Text = GetActiveAdapterSummary(),
-                Location = new Point(18, 90),
-                Size = new Size(536, 22),
-                ForeColor = AccentSoft,
-                Font = new Font("Segoe UI", 8.25f, FontStyle.Regular)
-            };
+            network.Controls.Add(_pnlNetworkAdapters);
+            network.Controls.Add(advancedNetworkLabel);
             network.Controls.Add(_txtNetworkExclusions);
-            network.Controls.Add(activeAdapters);
             body.Controls.Add(network);
 
-            var update = CreateCard(24, 426, 572, 84, "Updates and sensor refresh", "Background updates download the latest widget files from GitHub. Sensor refresh controls how often telemetry is written.");
+            var update = CreateCard(24, 528, 672, 84, "Updates and sensor refresh", "Background updates download the latest widget files from GitHub. Sensor refresh controls how often telemetry is written.");
             _chkAutoUpdate = new CheckBox
             {
                 Text = "Keep CodexMonitor updated automatically",
@@ -157,13 +169,13 @@ namespace CodexBridge
             var rateLabel = new Label
             {
                 Text = "Sensor refresh:",
-                Location = new Point(340, 53),
+                Location = new Point(440, 53),
                 Size = new Size(100, 22),
                 ForeColor = TextMain
             };
             _cmbUpdateRate = new ComboBox
             {
-                Location = new Point(446, 49),
+                Location = new Point(546, 49),
                 Size = new Size(108, 25),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 BackColor = Color.FromArgb(38, 44, 50),
@@ -179,20 +191,20 @@ namespace CodexBridge
 
             var footer = new Panel
             {
-                Location = new Point(0, 624),
-                Size = new Size(620, 66),
+                Location = new Point(0, 696),
+                Size = new Size(720, 64),
                 BackColor = Color.FromArgb(12, 16, 21)
             };
             footer.Paint += (s, e) =>
             {
                 using var pen = new Pen(Border, 1);
-                e.Graphics.DrawLine(pen, 0, 0, 620, 0);
+                e.Graphics.DrawLine(pen, 0, 0, 720, 0);
             };
             _lblApplyStatus = new Label
             {
                 Text = "Changes are saved to your local config.json and applied to the running widget.",
                 Location = new Point(24, 22),
-                Size = new Size(330, 24),
+                Size = new Size(430, 24),
                 ForeColor = TextMuted,
                 Font = new Font("Segoe UI", 8.4f, FontStyle.Regular)
             };
@@ -200,7 +212,7 @@ namespace CodexBridge
             {
                 Text = "Save and apply",
                 Size = new Size(132, 34),
-                Location = new Point(350, 16),
+                Location = new Point(450, 15),
                 BackColor = Accent,
                 ForeColor = Color.FromArgb(6, 12, 16),
                 FlatStyle = FlatStyle.Flat,
@@ -216,7 +228,7 @@ namespace CodexBridge
             {
                 Text = "Cancel",
                 Size = new Size(92, 34),
-                Location = new Point(500, 16),
+                Location = new Point(600, 15),
                 BackColor = Color.FromArgb(43, 49, 56),
                 ForeColor = TextMain,
                 FlatStyle = FlatStyle.Flat,
@@ -274,25 +286,6 @@ namespace CodexBridge
             };
         }
 
-        private static string GetActiveAdapterSummary()
-        {
-            try
-            {
-                var names = NetworkInterface.GetAllNetworkInterfaces()
-                    .Where(nic => nic.OperationalStatus == OperationalStatus.Up &&
-                                  nic.NetworkInterfaceType != NetworkInterfaceType.Loopback)
-                    .Select(nic => nic.Name)
-                    .Distinct()
-                    .Take(4)
-                    .ToList();
-                return names.Count == 0 ? "Active adapters: none detected" : "Active adapters: " + string.Join(", ", names);
-            }
-            catch
-            {
-                return "Active adapters: unavailable";
-            }
-        }
-
         private void LoadSettings()
         {
             var availableDrives = DriveInfo.GetDrives()
@@ -320,11 +313,13 @@ namespace CodexBridge
                 {
                     Text = infoText,
                     Tag = rawPrefix,
-                    Size = new Size(500, 25),
+                    Size = new Size(600, 25),
                     Margin = new Padding(0, 2, 0, 2),
                     ForeColor = TextMain
                 });
             }
+
+            PopulateNetworkAdapters();
 
             if (!File.Exists(_configPath))
             {
@@ -364,6 +359,11 @@ namespace CodexBridge
                     network.TryGetProperty("ignoreAdaptersContaining", out var ignore) && ignore.ValueKind == JsonValueKind.Array)
                 {
                     _txtNetworkExclusions.Text = string.Join(", ", ignore.EnumerateArray().Select(x => x.GetString()!));
+                }
+
+                if (rootElement.TryGetProperty("network", out var roleNetwork) && roleNetwork.ValueKind == JsonValueKind.Object)
+                {
+                    ApplyNetworkRoles(roleNetwork);
                 }
 
                 if (rootElement.TryGetProperty("bridge", out var bridge) && bridge.ValueKind == JsonValueKind.Object &&
@@ -441,10 +441,29 @@ namespace CodexBridge
                 configDict["disks"] = selectedDrives;
 
                 var networkDict = ReadObject(configDict, "network");
-                networkDict["ignoreAdaptersContaining"] = _txtNetworkExclusions.Text.Split(',')
+                var ignoreTerms = _txtNetworkExclusions.Text.Split(',')
                     .Select(x => x.Trim().ToLowerInvariant())
                     .Where(x => !string.IsNullOrEmpty(x))
                     .ToList();
+                var ethernetNames = ReadStringList(networkDict, "ethernetNamesContaining");
+                var wifiNames = ReadStringList(networkDict, "wifiNamesContaining");
+                var wifiApNames = ReadStringList(networkDict, "wifiApNamesContaining");
+                foreach (var role in GetSelectedNetworkRoles())
+                {
+                    RemoveTerm(ethernetNames, role.Name);
+                    RemoveTerm(wifiNames, role.Name);
+                    RemoveTerm(wifiApNames, role.Name);
+                    RemoveTerm(ignoreTerms, role.Name);
+
+                    if (role.Role == "Ethernet") AddTerm(ethernetNames, role.Name);
+                    else if (role.Role == "Wi-Fi") AddTerm(wifiNames, role.Name);
+                    else if (role.Role == "Wi-Fi hotspot") AddTerm(wifiApNames, role.Name);
+                    else if (role.Role == "Ignore") AddTerm(ignoreTerms, role.Name);
+                }
+                networkDict["ignoreAdaptersContaining"] = ignoreTerms;
+                networkDict["ethernetNamesContaining"] = ethernetNames;
+                networkDict["wifiNamesContaining"] = wifiNames;
+                networkDict["wifiApNamesContaining"] = wifiApNames;
                 configDict["network"] = networkDict;
 
                 var displayDict = ReadObject(configDict, "display");
@@ -484,6 +503,148 @@ namespace CodexBridge
                 return typed;
             }
             return new Dictionary<string, object>();
+        }
+
+        private static List<string> ReadStringList(Dictionary<string, object> config, string key)
+        {
+            if (config.TryGetValue(key, out var existing) && existing is JsonElement element && element.ValueKind == JsonValueKind.Array)
+            {
+                return element.EnumerateArray()
+                    .Select(x => x.GetString())
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x!)
+                    .ToList();
+            }
+            if (existing is IEnumerable<string> typed)
+            {
+                return typed.Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+            }
+            return new List<string>();
+        }
+
+        private static void AddTerm(List<string> terms, string value)
+        {
+            if (!terms.Any(x => string.Equals(x, value, StringComparison.OrdinalIgnoreCase)))
+            {
+                terms.Add(value);
+            }
+        }
+
+        private static void RemoveTerm(List<string> terms, string value)
+        {
+            terms.RemoveAll(x => string.Equals(x, value, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void PopulateNetworkAdapters()
+        {
+            _pnlNetworkAdapters.Controls.Clear();
+            var adapters = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(nic => nic.OperationalStatus == OperationalStatus.Up &&
+                              nic.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                .OrderBy(nic => nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ? 0 : 1)
+                .ThenBy(nic => nic.Name)
+                .ToList();
+
+            if (adapters.Count == 0)
+            {
+                _pnlNetworkAdapters.Controls.Add(new Label
+                {
+                    Text = "No active network adapters detected.",
+                    Size = new Size(610, 28),
+                    ForeColor = TextMuted
+                });
+                return;
+            }
+
+            foreach (var adapter in adapters)
+            {
+                var row = new Panel
+                {
+                    Size = new Size(612, 32),
+                    Margin = new Padding(0, 0, 0, 4),
+                    BackColor = Color.Transparent,
+                    Tag = adapter
+                };
+                var name = new Label
+                {
+                    Text = adapter.Name,
+                    Location = new Point(0, 4),
+                    Size = new Size(390, 24),
+                    AutoEllipsis = true,
+                    ForeColor = TextMain,
+                    Font = new Font("Segoe UI", 8.8f, FontStyle.Regular)
+                };
+                var role = new ComboBox
+                {
+                    Location = new Point(430, 2),
+                    Size = new Size(170, 25),
+                    DropDownStyle = ComboBoxStyle.DropDownList,
+                    BackColor = Color.FromArgb(38, 44, 50),
+                    ForeColor = TextMain,
+                    FlatStyle = FlatStyle.Flat,
+                    Tag = adapter.Name
+                };
+                role.Items.AddRange(NetworkRoles.Cast<object>().ToArray());
+                role.SelectedItem = adapter.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ? "Wi-Fi" : "Auto";
+                row.Controls.Add(name);
+                row.Controls.Add(role);
+                _pnlNetworkAdapters.Controls.Add(row);
+            }
+        }
+
+        private void ApplyNetworkRoles(JsonElement network)
+        {
+            var ignore = ReadJsonStringList(network, "ignoreAdaptersContaining");
+            var ethernet = ReadJsonStringList(network, "ethernetNamesContaining");
+            var wifi = ReadJsonStringList(network, "wifiNamesContaining");
+            var wifiAp = ReadJsonStringList(network, "wifiApNamesContaining");
+
+            foreach (Panel row in _pnlNetworkAdapters.Controls.OfType<Panel>())
+            {
+                var role = row.Controls.OfType<ComboBox>().FirstOrDefault();
+                if (role?.Tag is not string adapterName)
+                {
+                    continue;
+                }
+
+                if (ContainsTerm(ignore, adapterName)) role.SelectedItem = "Ignore";
+                else if (ContainsTerm(wifiAp, adapterName)) role.SelectedItem = "Wi-Fi hotspot";
+                else if (ContainsTerm(wifi, adapterName)) role.SelectedItem = "Wi-Fi";
+                else if (ContainsTerm(ethernet, adapterName)) role.SelectedItem = "Ethernet";
+            }
+        }
+
+        private static List<string> ReadJsonStringList(JsonElement parent, string key)
+        {
+            if (!parent.TryGetProperty(key, out var value) || value.ValueKind != JsonValueKind.Array)
+            {
+                return new List<string>();
+            }
+            return value.EnumerateArray()
+                .Select(x => x.GetString())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x!)
+                .ToList();
+        }
+
+        private static bool ContainsTerm(IEnumerable<string> terms, string adapterName)
+        {
+            return terms.Any(term => adapterName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                                     term.Contains(adapterName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private List<(string Name, string Role)> GetSelectedNetworkRoles()
+        {
+            var roles = new List<(string Name, string Role)>();
+            foreach (Panel row in _pnlNetworkAdapters.Controls.OfType<Panel>())
+            {
+                var role = row.Controls.OfType<ComboBox>().FirstOrDefault();
+                if (role?.Tag is string adapterName && role.SelectedItem is not null)
+                {
+                    roles.Add((adapterName, role.SelectedItem.ToString() ?? "Auto"));
+                }
+            }
+            return roles;
         }
 
         private int GetSelectedRefreshSeconds()
