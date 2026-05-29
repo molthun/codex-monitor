@@ -229,6 +229,24 @@ $shortcut.WorkingDirectory = $InstallRoot
 $shortcut.WindowStyle = 7
 $shortcut.Save()
 
+# Create Desktop shortcut for Settings GUI (since the widget is click-through / non-interactive)
+$settingsDesktopShortcutPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "CodexMonitor Settings.lnk"
+$settingsDesktopShortcut = $shell.CreateShortcut($settingsDesktopShortcutPath)
+$settingsDesktopShortcut.TargetPath = $bridgeExe
+$settingsDesktopShortcut.Arguments = "--settings --config `"$configTarget`""
+$settingsDesktopShortcut.WorkingDirectory = Split-Path -Parent $bridgeExe
+$settingsDesktopShortcut.IconLocation = "$bridgeExe,0"
+$settingsDesktopShortcut.Save()
+
+# Create Start Menu shortcut for Settings GUI
+$settingsStartMenuShortcutPath = Join-Path ([Environment]::GetFolderPath("Programs")) "CodexMonitor Settings.lnk"
+$settingsStartMenuShortcut = $shell.CreateShortcut($settingsStartMenuShortcutPath)
+$settingsStartMenuShortcut.TargetPath = $bridgeExe
+$settingsStartMenuShortcut.Arguments = "--settings --config `"$configTarget`""
+$settingsStartMenuShortcut.WorkingDirectory = Split-Path -Parent $bridgeExe
+$settingsStartMenuShortcut.IconLocation = "$bridgeExe,0"
+$settingsStartMenuShortcut.Save()
+
 if (-not $SkipRainmeterLayout -and (Test-Path -LiteralPath $rainmeterIni)) {
     Get-Process Rainmeter -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Milliseconds 500
