@@ -32,19 +32,21 @@ CHANGELOG.md
 
 ## Configuration
 
-Public defaults live in:
+Local runtime settings live in:
 
 ```text
 config.json
 ```
 
-Machine-specific overrides live in:
+`config.json` is ignored by Git. Edit it directly on your workstation.
+
+Public defaults live in:
 
 ```text
-config.local.json
+config.example.json
 ```
 
-`config.local.json` is ignored by Git. Scripts load `config.json` first and then overlay `config.local.json` when it exists.
+Scripts read `config.json`. If it is missing, they fall back to `config.example.json`; the installer creates `config.json` from that template on first setup.
 
 Current config consumers:
 
@@ -53,7 +55,7 @@ Current config consumers:
 - `Watch-PrimaryDisplay.ps1`
 - `CodexBridge.exe`
 
-When adding a new setting, update `config.json`, `config.local.example.json` if useful, this guide, and the relevant script/code.
+When adding a new setting, update `config.example.json`, this guide, and the relevant script/code.
 
 ## Editing Rainmeter
 

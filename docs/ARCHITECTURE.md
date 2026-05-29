@@ -22,16 +22,16 @@ Rainmeter WebParser measures
 
 ### Configuration
 
-Public default config:
+Local working config:
 
 ```text
 config.json
 ```
 
-Ignored local override:
+Public template:
 
 ```text
-config.local.json
+config.example.json
 ```
 
 Config consumers:
@@ -41,7 +41,7 @@ Config consumers:
 - display watcher;
 - bridge.
 
-The merge model is simple: load `config.json`, then overlay matching values from `config.local.json` if present.
+The model is intentionally simple: runtime tools read one config file, `config.json`. If it does not exist yet, scripts can fall back to `config.example.json` for default values. The installer creates `config.json` from `config.example.json` during first setup.
 
 ### CodexBridge
 

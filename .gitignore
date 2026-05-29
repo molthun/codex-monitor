@@ -29,10 +29,10 @@ Thumbs.db
 Desktop.ini
 
 # Rainmeter/user-specific config
+config.json
 Rainmeter.ini
 LOCAL_SETUP.md
 docs/LOCAL_SETUP.md
 *.local.md
 *.local.json
-config.local.json
 *.local.ps1

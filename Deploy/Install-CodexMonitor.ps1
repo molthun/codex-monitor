@@ -8,22 +8,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-function Merge-Object {
-    param($Base, $Override)
-    if ($null -eq $Override) { return $Base }
-    foreach ($prop in $Override.PSObject.Properties) {
-        if ($null -ne $Base.PSObject.Properties[$prop.Name] -and
-            $Base.$($prop.Name) -is [pscustomobject] -and
-            $prop.Value -is [pscustomobject]) {
-            Merge-Object -Base $Base.$($prop.Name) -Override $prop.Value | Out-Null
-        }
-        else {
-            $Base | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $prop.Value -Force
-        }
-    }
-    return $Base
-}
-
 function Get-ProjectRoot {
     return (Split-Path -Parent $PSScriptRoot)
 }
@@ -31,21 +15,15 @@ function Get-ProjectRoot {
 function Read-CodexConfig {
     param([string]$Path)
     $projectRoot = Get-ProjectRoot
-    $mainPath = if ($Path -and (Test-Path -LiteralPath $Path)) { $Path } elseif ($Path -and $Path.EndsWith("config.local.json", [StringComparison]::OrdinalIgnoreCase)) { Join-Path (Split-Path -Parent $Path) "config.json" } else { Join-Path $projectRoot "config.json" }
-    if (Test-Path -LiteralPath $mainPath) {
-        $config = Get-Content -LiteralPath $mainPath -Raw -Encoding UTF8 | ConvertFrom-Json
+    $configPath = if ($Path) { $Path } else { Join-Path $projectRoot "config.json" }
+    $examplePath = Join-Path $projectRoot "config.example.json"
+    if (Test-Path -LiteralPath $configPath) {
+        return Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json
     }
-    else {
-        $config = [pscustomobject]@{}
+    if ((-not $Path) -and (Test-Path -LiteralPath $examplePath)) {
+        return Get-Content -LiteralPath $examplePath -Raw -Encoding UTF8 | ConvertFrom-Json
     }
-
-    $localPath = if ($Path -and $Path.EndsWith("config.local.json", [StringComparison]::OrdinalIgnoreCase)) { $Path } else { Join-Path $projectRoot "config.local.json" }
-    if ((-not $Path) -and (Test-Path -LiteralPath $localPath)) {
-        $localConfig = Get-Content -LiteralPath $localPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        $config = Merge-Object -Base $config -Override $localConfig
-    }
-
-    return $config
+    return [pscustomobject]@{}
 }
 
 $config = Read-CodexConfig -Path $ConfigPath
@@ -168,7 +146,6 @@ $bridgeProject = Join-Path $bridgeTarget "CodexBridge.csproj"
 $bridgeExe = Join-Path $bridgeTarget "bin\Release\net10.0\CodexBridge.exe"
 $watcherScript = Join-Path $InstallRoot "Watch-PrimaryDisplay.ps1"
 $configTarget = Join-Path $InstallRoot "config.json"
-$configLocalTarget = Join-Path $InstallRoot "config.local.json"
 $rainmeterExe = if ($config.rainmeter.executable) { $config.rainmeter.executable } else { "C:\Program Files\Rainmeter\Rainmeter.exe" }
 $taskName = if ($config.bridge.taskName) { $config.bridge.taskName } else { "CodexMonitor Bridge Elevated" }
 $watcherShortcutName = if ($config.startup.watcherShortcutName) { $config.startup.watcherShortcutName } else { "CodexMonitor Display Watcher.lnk" }
@@ -181,17 +158,13 @@ Copy-Item -LiteralPath (Join-Path $skinSource "CodexMonitor.ini") -Destination (
 Copy-Item -LiteralPath (Join-Path $skinSource "CodexMonitor.1080p.ini") -Destination (Join-Path $presetsTarget "CodexMonitor.1080p.ini") -Force
 Copy-Item -LiteralPath (Join-Path $skinSource "CodexMonitor.4K.ini") -Destination (Join-Path $presetsTarget "CodexMonitor.4K.ini") -Force
 Copy-Item -LiteralPath (Join-Path $packageRoot "Watch-PrimaryDisplay.ps1") -Destination $watcherScript -Force
-if (Test-Path -LiteralPath (Join-Path (Get-ProjectRoot) "config.json")) {
-    $sourceConfig = Join-Path (Get-ProjectRoot) "config.json"
-    if ((Resolve-Path -LiteralPath $sourceConfig).Path -ne (Resolve-Path -LiteralPath (Split-Path -Parent $configTarget)).Path + "\config.json") {
-        Copy-Item -LiteralPath $sourceConfig -Destination $configTarget -Force
-    }
+$projectConfig = Join-Path (Get-ProjectRoot) "config.json"
+$exampleConfig = Join-Path (Get-ProjectRoot) "config.example.json"
+if (-not (Test-Path -LiteralPath $projectConfig) -and (Test-Path -LiteralPath $exampleConfig)) {
+    Copy-Item -LiteralPath $exampleConfig -Destination $projectConfig -Force
 }
-if ((Test-Path -LiteralPath (Join-Path (Get-ProjectRoot) "config.local.json")) -and -not (Test-Path -LiteralPath $configLocalTarget)) {
-    $sourceLocalConfig = Join-Path (Get-ProjectRoot) "config.local.json"
-    if ((Resolve-Path -LiteralPath $sourceLocalConfig).Path -ne $configLocalTarget) {
-        Copy-Item -LiteralPath $sourceLocalConfig -Destination $configLocalTarget -Force
-    }
+if ((Test-Path -LiteralPath $projectConfig) -and ((Resolve-Path -LiteralPath $projectConfig).Path -ne $configTarget)) {
+    Copy-Item -LiteralPath $projectConfig -Destination $configTarget -Force
 }
 
 if (-not (Test-Path -LiteralPath $bridgeExe)) {
@@ -222,7 +195,7 @@ Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction Sil
     Where-Object { $_.CommandLine -like "*Watch-PrimaryDisplay.ps1*" } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
-$bridgeArgs = "--config `"$configLocalTarget`""
+$bridgeArgs = "--config `"$configTarget`""
 $action = New-ScheduledTaskAction -Execute $bridgeExe -Argument $bridgeArgs -WorkingDirectory (Split-Path -Parent $bridgeExe)
 $trigger = New-ScheduledTaskTrigger -AtLogOn
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
@@ -232,7 +205,7 @@ Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Pr
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($watcherShortcut)
 $shortcut.TargetPath = "powershell.exe"
-$shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watcherScript`" -ConfigPath `"$configLocalTarget`""
+$shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watcherScript`" -ConfigPath `"$configTarget`""
 $shortcut.WorkingDirectory = $InstallRoot
 $shortcut.WindowStyle = 7
 $shortcut.Save()
@@ -270,7 +243,7 @@ if (-not $SkipRainmeterLayout -and (Test-Path -LiteralPath $rainmeterIni)) {
 
 if (-not $NoStart) {
     Start-ScheduledTask -TaskName $taskName
-    Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watcherScript`" -ConfigPath `"$ConfigPath`"" -WindowStyle Hidden
+    Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watcherScript`" -ConfigPath `"$configTarget`"" -WindowStyle Hidden
     if (Test-Path -LiteralPath $rainmeterExe) {
         if (-not (Get-Process Rainmeter -ErrorAction SilentlyContinue)) {
             Start-Process -FilePath $rainmeterExe

@@ -43,21 +43,20 @@ The project is configured through:
 config.json
 ```
 
-`config.json` is committed and contains safe public defaults. For a specific machine, create:
+`config.json` is the local working config and is ignored by Git. On first install, it is created from the public template:
 
 ```text
-config.local.json
+config.example.json
 ```
 
-`config.local.json` is ignored by Git and overrides matching values from `config.json`. This keeps the public project clean while allowing each developer to keep their own paths and local choices.
+Edit `config.json` directly on your workstation. Scripts pick it up on the next run; long-running services should be restarted after config changes.
 
 After cloning from GitHub, the normal flow is:
 
 ```powershell
 cd C:\CodexMonitor
-copy config.local.example.json config.local.json
-notepad config.local.json
 powershell -ExecutionPolicy Bypass -File "C:\CodexMonitor\Deploy\Install-Prerequisites-And-Restore.ps1"
+powershell -ExecutionPolicy Bypass -File "C:\CodexMonitor\Deploy\Install-CodexMonitor.ps1"
 ```
 
 ## Source Of Truth
@@ -82,8 +81,7 @@ Read these files before changing behavior:
 - `docs\SENSOR_CONTRACT.md` - exact `temps.txt` key contract.
 - `docs\GITHUB.md` - how to publish/maintain this as a GitHub repo.
 - `CHANGELOG.md` - project change log.
-- `config.json` - public default configuration.
-- `config.local.example.json` - local override template.
+- `config.example.json` - public config template used to create local `config.json`.
 
 ## Daily Commands
 

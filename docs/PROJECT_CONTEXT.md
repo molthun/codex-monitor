@@ -10,19 +10,17 @@ docs\LOCAL_SETUP.md
 
 That file is ignored by Git. Use `docs\LOCAL_SETUP.example.md` as its template.
 
-Runtime/install settings belong in:
+Runtime/install settings belong in the local working config:
 
 ```text
 config.json
 ```
 
-Machine-specific config overrides belong in:
+`config.json` is ignored by Git. Public default settings belong in:
 
 ```text
-config.local.json
+config.example.json
 ```
-
-`config.local.json` is ignored by Git.
 
 ## Goal
 

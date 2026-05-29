@@ -6,33 +6,14 @@ param(
 
 $ErrorActionPreference = "SilentlyContinue"
 
-function Merge-Object {
-    param($Base, $Override)
-    if ($null -eq $Override) { return $Base }
-    foreach ($prop in $Override.PSObject.Properties) {
-        if ($null -ne $Base.PSObject.Properties[$prop.Name] -and
-            $Base.$($prop.Name) -is [pscustomobject] -and
-            $prop.Value -is [pscustomobject]) {
-            Merge-Object -Base $Base.$($prop.Name) -Override $prop.Value | Out-Null
-        }
-        else {
-            $Base | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $prop.Value -Force
-        }
-    }
-    return $Base
-}
-
 function Read-CodexConfig {
     param([string]$Path)
     $root = $PSScriptRoot
-    $mainPath = if ($Path -and (Test-Path -LiteralPath $Path)) { $Path } elseif ($Path -and $Path.EndsWith("config.local.json", [StringComparison]::OrdinalIgnoreCase)) { Join-Path (Split-Path -Parent $Path) "config.json" } else { Join-Path $root "config.json" }
-    if (Test-Path -LiteralPath $mainPath) { $config = Get-Content -LiteralPath $mainPath -Raw -Encoding UTF8 | ConvertFrom-Json }
-    else { $config = [pscustomobject]@{} }
-    $localPath = if ($Path -and $Path.EndsWith("config.local.json", [StringComparison]::OrdinalIgnoreCase)) { $Path } else { Join-Path $root "config.local.json" }
-    if ((-not $Path) -and (Test-Path -LiteralPath $localPath)) {
-        $config = Merge-Object -Base $config -Override (Get-Content -LiteralPath $localPath -Raw -Encoding UTF8 | ConvertFrom-Json)
-    }
-    return $config
+    $configPath = if ($Path) { $Path } else { Join-Path $root "config.json" }
+    $examplePath = Join-Path $root "config.example.json"
+    if (Test-Path -LiteralPath $configPath) { return Get-Content -LiteralPath $configPath -Raw -Encoding UTF8 | ConvertFrom-Json }
+    if ((-not $Path) -and (Test-Path -LiteralPath $examplePath)) { return Get-Content -LiteralPath $examplePath -Raw -Encoding UTF8 | ConvertFrom-Json }
+    return [pscustomobject]@{}
 }
 
 $config = Read-CodexConfig -Path $ConfigPath

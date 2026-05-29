@@ -7,7 +7,7 @@ using FanControl.IPC;
 
 var configPath = GetArgValue(args, "--config")
     ?? Environment.GetEnvironmentVariable("CODEXMONITOR_CONFIG")
-    ?? @"C:\CodexMonitor\config.local.json";
+    ?? @"C:\CodexMonitor\config.json";
 var config = ReadConfig(configPath);
 var root = config.InstallRoot ?? @"C:\CodexMonitor";
 var outFile = config.BridgeOutputFile ?? Path.Combine(root, @"@Resources\temps.txt");
@@ -154,16 +154,7 @@ static BridgeConfig ReadConfig(string path)
     var config = new BridgeConfig();
     try
     {
-        var mainPath = path.EndsWith("config.local.json", StringComparison.OrdinalIgnoreCase)
-            ? Path.Combine(Path.GetDirectoryName(path) ?? "", "config.json")
-            : path;
-
-        if (File.Exists(mainPath))
-        {
-            ApplyConfig(config, mainPath);
-        }
-
-        if (!string.Equals(mainPath, path, StringComparison.OrdinalIgnoreCase) && File.Exists(path))
+        if (File.Exists(path))
         {
             ApplyConfig(config, path);
         }

@@ -20,8 +20,7 @@ Publish:
 - Rainmeter skin and presets;
 - PowerShell install/switch/watch scripts;
 - documentation;
-- `config.json` public defaults;
-- `config.local.example.json` local override template;
+- `config.example.json` public config template;
 - example `temps.txt`;
 - reinstall scripts.
 
@@ -29,7 +28,7 @@ Do not publish:
 
 - large runtime logs;
 - personal Rainmeter.ini;
-- `config.local.json`;
+- local `config.json`;
 - generated `bin`/`obj` folders unless a release artifact is intentionally attached;
 - local backups;
 - zip archives unless using GitHub Releases;

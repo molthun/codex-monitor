@@ -4,7 +4,7 @@
 
 - Decided GitHub should become the primary source of truth for collaboration; local reinstall archives become optional staging after GitHub is live.
 - Split public project documentation from ignored local machine setup.
-- Added JSON configuration split: committed `config.json` plus ignored `config.local.json`.
+- Changed config model to one local working `config.json`, created from committed `config.example.json`.
 - Installer, size switcher, display watcher, and bridge now read JSON config.
 - Installer can build `CodexBridge.exe` from source when the binary is missing.
 - Added developer documentation set:
