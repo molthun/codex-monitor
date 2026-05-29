@@ -17,7 +17,8 @@
     "taskName": "CodexMonitor Bridge Elevated",
     "mutexName": "CodexMonitorFanControlBridge",
     "outputFile": "C:\\CodexMonitor\\@Resources\\temps.txt",
-    "updateSeconds": 1
+    "updateSeconds": 1,
+    "boardFanIdentifierPrefix": "/lpc/nct6796dr/fan/"
   },
   "display": {
     "followPrimary": true,

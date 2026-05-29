@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Text;
 using System.Text.Json;
+using System.Linq;
 using FanControl.IPC;
 
 var configPath = GetArgValue(args, "--config")
@@ -22,66 +23,101 @@ if (!createdNew && !onceMode)
     return;
 }
 
-var sensorClient = IPCFactory.GetSensorClient();
-var lastErrorLog = DateTime.MinValue;
-var networkPrevious = new Dictionary<string, (long Received, long Sent)>(StringComparer.OrdinalIgnoreCase);
-var networkPreviousAt = DateTime.UtcNow;
+    var sensorClient = IPCFactory.GetSensorClient();
+    var lastErrorLog = DateTime.MinValue;
+    var networkPrevious = new Dictionary<string, (long Received, long Sent)>(StringComparer.OrdinalIgnoreCase);
+    var networkPreviousAt = DateTime.UtcNow;
 
-do
-{
-    try
+    do
     {
-        var sensorsReply = await sensorClient.GetAllSensorsAsync(new GetAllSensorsRequest());
-        var sensors = sensorsReply.Sensors
-            .Where(s => s.HasValue)
-            .OrderBy(s => s.Type.ToString())
-            .ThenBy(s => s.Name)
-            .ToList();
-
-        if (dumpMode)
+        try
         {
-            foreach (var sensor in sensors)
+            if (sensorClient == null)
             {
-                Console.WriteLine($"{sensor.Type,-12} | {sensor.Value,8:0.##} | {sensor.Name} | {sensor.Identifier} | {sensor.Origin}");
+                sensorClient = IPCFactory.GetSensorClient();
             }
-            return;
-        }
+            var sensorsReply = await sensorClient.GetAllSensorsAsync(new GetAllSensorsRequest());
+            var sensors = sensorsReply.Sensors
+                .Where(s => s.HasValue)
+                .OrderBy(s => s.Type.ToString())
+                .ThenBy(s => s.Name)
+                .ToList();
 
-        var cpuTemp = Pick(sensors, SensorMessageType.Temperature, "cpu", "package")
-            ?? Pick(sensors, SensorMessageType.Temperature, "cpu")
-            ?? Pick(sensors, SensorMessageType.Temperature, "processor");
+            if (dumpMode)
+            {
+                foreach (var sensor in sensors)
+                {
+                    Console.WriteLine($"{sensor.Type,-12} | {sensor.Value,8:0.##} | {sensor.Name} | {sensor.Identifier} | {sensor.Origin}");
+                }
+                return;
+            }
 
-        var cpuFan = Pick(sensors, SensorMessageType.Rpm, "cpu")
-            ?? Pick(sensors, SensorMessageType.Rpm, "processor")
-            ?? Pick(sensors, SensorMessageType.Rpm, "cpu_fan")
-            ?? Pick(sensors, SensorMessageType.Rpm, "/lpc/nct6796dr/fan/0")
-            ?? Pick(sensors, SensorMessageType.Rpm, "fan #1")
-            ?? Pick(sensors, SensorMessageType.Rpm, "fan 1");
+            var cpuTempSensor = PickSensor(sensors, SensorMessageType.Temperature, "cpu", "package")
+                ?? PickSensor(sensors, SensorMessageType.Temperature, "cpu")
+                ?? PickSensor(sensors, SensorMessageType.Temperature, "processor");
+            var cpuTemp = cpuTempSensor?.Value;
 
-        var gpuCore = Pick(sensors, SensorMessageType.Temperature, "nvidia", "gpu")
-            ?? Pick(sensors, SensorMessageType.Temperature, "gpu", "core")
-            ?? Pick(sensors, SensorMessageType.Temperature, "gpu");
-        var gpuHotspot = Pick(sensors, SensorMessageType.Temperature, "gpu", "hot");
-        var gpuMemory = Pick(sensors, SensorMessageType.Temperature, "gpu", "memory");
-        var gpuFan = Pick(sensors, SensorMessageType.Rpm, "nvidia")
-            ?? Pick(sensors, SensorMessageType.Rpm, "gpu");
-        var gpuFanPct = Pick(sensors, SensorMessageType.UsagePercent, "gpu", "fan")
-            ?? Pick(sensors, SensorMessageType.Control, "gpu", "fan")
-            ?? Pick(sensors, SensorMessageType.Control, "nvidia")
-            ?? Pick(sensors, SensorMessageType.UsagePercent, "gpu");
-        var nvidiaGpu = QueryNvidiaSmi();
-        if (nvidiaGpu is not null)
-        {
-            gpuCore = nvidiaGpu.Value.Temp ?? gpuCore;
-            gpuFanPct = nvidiaGpu.Value.FanPct ?? gpuFanPct;
-        }
+            var cpuFanSensor = PickSensor(sensors, SensorMessageType.Rpm, "cpu")
+                ?? PickSensor(sensors, SensorMessageType.Rpm, "processor")
+                ?? PickSensor(sensors, SensorMessageType.Rpm, "cpu_fan")
+                ?? PickSensor(sensors, SensorMessageType.Rpm, "/lpc/nct6796dr/fan/0")
+                ?? PickSensor(sensors, SensorMessageType.Rpm, "fan #1")
+                ?? PickSensor(sensors, SensorMessageType.Rpm, "fan 1");
+            var cpuFan = cpuFanSensor?.Value;
 
-        var boardFans = Enumerable.Range(0, 7)
-            .Select(i => PickByIdentifier(sensors, SensorMessageType.Rpm, $"/lpc/nct6796dr/fan/{i}"))
-            .ToArray();
-        var psuFan = Pick(sensors, SensorMessageType.Rpm, "psu")
-            ?? Pick(sensors, SensorMessageType.Rpm, "power supply");
-        var network = QueryNetworkRates(networkPrevious, ref networkPreviousAt);
+            var gpuCoreSensor = PickSensor(sensors, SensorMessageType.Temperature, "nvidia", "gpu")
+                ?? PickSensor(sensors, SensorMessageType.Temperature, "gpu", "core")
+                ?? PickSensor(sensors, SensorMessageType.Temperature, "gpu");
+            var gpuCore = gpuCoreSensor?.Value;
+
+            var gpuHotspotSensor = PickSensor(sensors, SensorMessageType.Temperature, "gpu", "hot");
+            var gpuHotspot = gpuHotspotSensor?.Value;
+
+            var gpuMemorySensor = PickSensor(sensors, SensorMessageType.Temperature, "gpu", "memory");
+            var gpuMemory = gpuMemorySensor?.Value;
+
+            var gpuFanSensor = PickSensor(sensors, SensorMessageType.Rpm, "nvidia")
+                ?? PickSensor(sensors, SensorMessageType.Rpm, "gpu");
+            var gpuFan = gpuFanSensor?.Value;
+
+            var gpuFanPctSensor = PickSensor(sensors, SensorMessageType.UsagePercent, "gpu", "fan")
+                ?? PickSensor(sensors, SensorMessageType.Control, "gpu", "fan")
+                ?? PickSensor(sensors, SensorMessageType.Control, "nvidia")
+                ?? PickSensor(sensors, SensorMessageType.UsagePercent, "gpu");
+            var gpuFanPct = gpuFanPctSensor?.Value;
+
+            var nvidiaGpu = QueryNvidiaSmi();
+            if (nvidiaGpu is not null)
+            {
+                gpuCore = nvidiaGpu.Value.Temp ?? gpuCore;
+                gpuFanPct = nvidiaGpu.Value.FanPct ?? gpuFanPct;
+            }
+
+            var boardFanPrefix = config.BridgeBoardFanIdentifierPrefix ?? "/lpc/nct6796dr/fan/";
+            var boardFans = Enumerable.Range(0, 7)
+                .Select(i => PickByIdentifier(sensors, SensorMessageType.Rpm, $"{boardFanPrefix}{i}"))
+                .ToArray();
+
+            if (boardFans.All(f => !f.HasValue))
+            {
+                var otherRpmSensors = sensors
+                    .Where(s => s.Type == SensorMessageType.Rpm)
+                    .Where(s => s.Identifier != cpuFanSensor?.Identifier && s.Identifier != gpuFanSensor?.Identifier)
+                    .Take(7)
+                    .ToList();
+
+                for (int i = 0; i < 7; i++)
+                {
+                    if (i < otherRpmSensors.Count)
+                    {
+                        boardFans[i] = otherRpmSensors[i].Value;
+                    }
+                }
+            }
+
+            var psuFan = Pick(sensors, SensorMessageType.Rpm, "psu")
+                ?? Pick(sensors, SensorMessageType.Rpm, "power supply");
+            var network = QueryNetworkRates(networkPrevious, ref networkPreviousAt, config);
 
         var content = new StringBuilder()
             .AppendLine($"CPU={Round(cpuTemp)}")
@@ -118,6 +154,16 @@ do
     }
     catch (Exception ex)
     {
+        try
+        {
+            if (sensorClient is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        }
+        catch { }
+        sensorClient = null;
+
         if (DateTime.UtcNow - lastErrorLog > TimeSpan.FromMinutes(1))
         {
             File.AppendAllText(Path.Combine(root, "CodexBridge.error.log"), $"{DateTime.Now:u} {ex}\n");
@@ -192,6 +238,31 @@ static void ApplyConfig(BridgeConfig config, string path)
         {
             config.BridgeUpdateSeconds = Math.Max(0.25, seconds);
         }
+
+        if (bridge.TryGetProperty("boardFanIdentifierPrefix", out var prefix) && prefix.ValueKind == JsonValueKind.String)
+        {
+            config.BridgeBoardFanIdentifierPrefix = prefix.GetString();
+        }
+    }
+
+    if (rootElement.TryGetProperty("network", out var network) && network.ValueKind == JsonValueKind.Object)
+    {
+        if (network.TryGetProperty("ignoreAdaptersContaining", out var ignore) && ignore.ValueKind == JsonValueKind.Array)
+        {
+            config.NetworkIgnoreAdapters = ignore.EnumerateArray().Select(x => x.GetString()!).ToList();
+        }
+        if (network.TryGetProperty("wifiApNamesContaining", out var wifiAp) && wifiAp.ValueKind == JsonValueKind.Array)
+        {
+            config.NetworkWifiApNames = wifiAp.EnumerateArray().Select(x => x.GetString()!).ToList();
+        }
+        if (network.TryGetProperty("wifiNamesContaining", out var wifi) && wifi.ValueKind == JsonValueKind.Array)
+        {
+            config.NetworkWifiNames = wifi.EnumerateArray().Select(x => x.GetString()!).ToList();
+        }
+        if (network.TryGetProperty("ethernetNamesContaining", out var eth) && eth.ValueKind == JsonValueKind.Array)
+        {
+            config.NetworkEthernetNames = eth.EnumerateArray().Select(x => x.GetString()!).ToList();
+        }
     }
 }
 
@@ -205,6 +276,18 @@ static float? Pick(IEnumerable<SensorMessage> sensors, SensorMessageType type, p
             return needles.All(n => text.Contains(n.ToLowerInvariant()));
         })
         .Select(s => (float?)s.Value)
+        .FirstOrDefault();
+}
+
+static SensorMessage? PickSensor(IEnumerable<SensorMessage> sensors, SensorMessageType type, params string[] needles)
+{
+    return sensors
+        .Where(s => s.Type == type)
+        .Where(s =>
+        {
+            var text = $"{s.Name} {s.Identifier} {s.Origin}".ToLowerInvariant();
+            return needles.All(n => text.Contains(n.ToLowerInvariant()));
+        })
         .FirstOrDefault();
 }
 
@@ -346,7 +429,8 @@ static float? ParseFloat(string value)
 
 static (double EthInMbps, double EthOutMbps, double WifiInMbps, double WifiOutMbps, double WifiApInMbps, double WifiApOutMbps, string WifiActiveMode, double WifiActiveInMbps, double WifiActiveOutMbps, double WifiActiveDlMbps, double WifiActiveUlMbps) QueryNetworkRates(
     Dictionary<string, (long Received, long Sent)> previous,
-    ref DateTime previousAt)
+    ref DateTime previousAt,
+    BridgeConfig config)
 {
     var now = DateTime.UtcNow;
     var seconds = Math.Max((now - previousAt).TotalSeconds, 0.001);
@@ -360,6 +444,11 @@ static (double EthInMbps, double EthOutMbps, double WifiInMbps, double WifiOutMb
     var wifiApUp = false;
     var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+    var ignoreList = config.NetworkIgnoreAdapters ?? new List<string> { "hyper-v", "virtual switch", "wsl", "teredo", "wan miniport", "bluetooth" };
+    var wifiApList = config.NetworkWifiApNames ?? new List<string> { "wi-fi direct", "wifi direct" };
+    var wifiList = config.NetworkWifiNames ?? new List<string> { "wi-fi", "wifi", "wireless" };
+    var ethList = config.NetworkEthernetNames ?? new List<string> { "ethernet", "i219-v", "intel" };
+
     foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
     {
         if (nic.OperationalStatus != OperationalStatus.Up)
@@ -372,29 +461,47 @@ static (double EthInMbps, double EthOutMbps, double WifiInMbps, double WifiOutMb
         var text = $"{name} {description}";
         var lower = text.ToLowerInvariant();
 
-        if (lower.Contains("hyper-v") || lower.Contains("virtual switch") || lower.Contains("wsl") ||
-            lower.Contains("teredo") || lower.Contains("wan miniport") || lower.Contains("bluetooth"))
+        if (ignoreList.Any(ignore => lower.Contains(ignore, StringComparison.OrdinalIgnoreCase)))
         {
             continue;
         }
 
-        var stats = nic.GetIPv4Statistics();
+        long rxBytes = 0;
+        long txBytes = 0;
+
+        try
+        {
+            var stats = nic.GetIPStatistics();
+            rxBytes = stats.BytesReceived;
+            txBytes = stats.BytesSent;
+        }
+        catch 
+        {
+            try
+            {
+                var stats4 = nic.GetIPv4Statistics();
+                rxBytes = stats4.BytesReceived;
+                txBytes = stats4.BytesSent;
+            }
+            catch { }
+        }
+
         seen.Add(nic.Id);
         previous.TryGetValue(nic.Id, out var old);
-        previous[nic.Id] = (stats.BytesReceived, stats.BytesSent);
+        previous[nic.Id] = (rxBytes, txBytes);
 
         if (old.Received <= 0 && old.Sent <= 0)
         {
             continue;
         }
 
-        var rxMbps = Math.Max(0, stats.BytesReceived - old.Received) * 8 / seconds / 1_000_000;
-        var txMbps = Math.Max(0, stats.BytesSent - old.Sent) * 8 / seconds / 1_000_000;
-        var isWifiDirect = lower.Contains("wi-fi direct") || lower.Contains("wifi direct");
+        var rxMbps = Math.Max(0, rxBytes - old.Received) * 8 / seconds / 1_000_000;
+        var txMbps = Math.Max(0, txBytes - old.Sent) * 8 / seconds / 1_000_000;
+        var isWifiDirect = wifiApList.Any(ap => lower.Contains(ap, StringComparison.OrdinalIgnoreCase));
         var isWifi = nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ||
-                     lower.Contains("wi-fi") || lower.Contains("wifi") || lower.Contains("wireless");
+                     wifiList.Any(w => lower.Contains(w, StringComparison.OrdinalIgnoreCase));
         var isEthernet = nic.NetworkInterfaceType == NetworkInterfaceType.Ethernet ||
-                         lower.Contains("ethernet") || lower.Contains("i219-v") || lower.Contains("intel");
+                         ethList.Any(e => lower.Contains(e, StringComparison.OrdinalIgnoreCase));
 
         if (isWifiDirect)
         {
@@ -444,4 +551,9 @@ sealed class BridgeConfig
     public string? BridgeOutputFile { get; set; }
     public string? BridgeMutexName { get; set; }
     public double? BridgeUpdateSeconds { get; set; }
+    public string? BridgeBoardFanIdentifierPrefix { get; set; }
+    public List<string>? NetworkIgnoreAdapters { get; set; }
+    public List<string>? NetworkWifiApNames { get; set; }
+    public List<string>? NetworkWifiNames { get; set; }
+    public List<string>? NetworkEthernetNames { get; set; }
 }

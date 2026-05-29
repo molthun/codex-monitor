@@ -151,13 +151,27 @@ $taskName = if ($config.bridge.taskName) { $config.bridge.taskName } else { "Cod
 $watcherShortcutName = if ($config.startup.watcherShortcutName) { $config.startup.watcherShortcutName } else { "CodexMonitor Display Watcher.lnk" }
 $watcherShortcut = Join-Path ([Environment]::GetFolderPath("Startup")) $watcherShortcutName
 
-New-Item -ItemType Directory -Force -Path $InstallRoot, $resourcesTarget, $skinTarget, $presetsTarget | Out-Null
+Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue | Stop-ScheduledTask -ErrorAction SilentlyContinue
+Get-Process CodexBridge -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -like "*Watch-PrimaryDisplay.ps1*" } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
+$skinResourcesTarget = Join-Path $skinTarget "@Resources"
+New-Item -ItemType Directory -Force -Path $InstallRoot, $resourcesTarget, $skinTarget, $presetsTarget, $skinResourcesTarget | Out-Null
 Copy-Item -LiteralPath $bridgeSource -Destination $InstallRoot -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $payload "CodexMonitor.ini") -Destination (Join-Path $InstallRoot "CodexMonitor.ini") -Force
 Copy-Item -LiteralPath (Join-Path $skinSource "CodexMonitor.ini") -Destination (Join-Path $skinTarget "CodexMonitor.ini") -Force
 Copy-Item -LiteralPath (Join-Path $skinSource "CodexMonitor.1080p.ini") -Destination (Join-Path $presetsTarget "CodexMonitor.1080p.ini") -Force
 Copy-Item -LiteralPath (Join-Path $skinSource "CodexMonitor.4K.ini") -Destination (Join-Path $presetsTarget "CodexMonitor.4K.ini") -Force
-Copy-Item -LiteralPath (Join-Path $packageRoot "Watch-PrimaryDisplay.ps1") -Destination $watcherScript -Force
+$watcherSource = [System.IO.Path]::GetFullPath((Join-Path (Get-ProjectRoot) "Watch-PrimaryDisplay.ps1"))
+$watcherDest = [System.IO.Path]::GetFullPath($watcherScript)
+if ($watcherSource -ine $watcherDest) {
+    Copy-Item -LiteralPath $watcherSource -Destination $watcherScript -Force
+}
+if (Test-Path -LiteralPath (Join-Path $payload "@Resources")) {
+    Copy-Item -LiteralPath (Join-Path $payload "@Resources") -Destination $skinTarget -Recurse -Force
+}
 $projectConfig = Join-Path (Get-ProjectRoot) "config.json"
 $exampleConfig = Join-Path (Get-ProjectRoot) "config.example.json"
 if (-not (Test-Path -LiteralPath $projectConfig) -and (Test-Path -LiteralPath $exampleConfig)) {
@@ -165,6 +179,19 @@ if (-not (Test-Path -LiteralPath $projectConfig) -and (Test-Path -LiteralPath $e
 }
 if ((Test-Path -LiteralPath $projectConfig) -and ((Resolve-Path -LiteralPath $projectConfig).Path -ne $configTarget)) {
     Copy-Item -LiteralPath $projectConfig -Destination $configTarget -Force
+}
+
+if (Test-Path -LiteralPath $configTarget) {
+    try {
+        $configJson = Get-Content -LiteralPath $configTarget -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($configJson.bridge) {
+            $configJson.bridge.outputFile = (Join-Path $skinTarget "@Resources\temps.txt")
+            $configJson | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $configTarget -Encoding UTF8
+        }
+    }
+    catch {
+        Write-Warning "Failed to update outputFile in config.json: $_"
+    }
 }
 
 if (-not (Test-Path -LiteralPath $bridgeExe)) {
@@ -185,15 +212,12 @@ if (Test-Path -LiteralPath $sizeSwitcher) {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sizeSwitcher -Mode $profileMode -InstallRoot $InstallRoot -ConfigPath $ConfigPath
 }
 
-if (-not (Test-Path -LiteralPath (Join-Path $resourcesTarget "temps.txt"))) {
-    Copy-Item -LiteralPath (Join-Path $payload "@Resources\temps.example.txt") -Destination (Join-Path $resourcesTarget "temps.txt") -Force
+if (-not (Test-Path -LiteralPath (Join-Path $skinResourcesTarget "temps.txt"))) {
+    if (Test-Path -LiteralPath (Join-Path $payload "@Resources\temps.example.txt")) {
+        Copy-Item -LiteralPath (Join-Path $payload "@Resources\temps.example.txt") -Destination (Join-Path $skinResourcesTarget "temps.txt") -Force
+    }
 }
 
-Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue | Stop-ScheduledTask -ErrorAction SilentlyContinue
-Get-Process CodexBridge -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
-    Where-Object { $_.CommandLine -like "*Watch-PrimaryDisplay.ps1*" } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
 $bridgeArgs = "--config `"$configTarget`""
 $action = New-ScheduledTaskAction -Execute $bridgeExe -Argument $bridgeArgs -WorkingDirectory (Split-Path -Parent $bridgeExe)

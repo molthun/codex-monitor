@@ -2,6 +2,14 @@
 
 ## 2026-05-29
 
+- Refactored CodexBridge and Rainmeter setup to fix hardcoded paths, hardware-specific dependencies, and configuration mismatches:
+  - Translated all hardcoded absolute paths `file://C:/CodexMonitor/@Resources/temps.txt` to the relative `#@#temps.txt` path in all `.ini` skins and size presets.
+  - Updated installer to copy `@Resources` payload directly into the active Rainmeter skin target, and dynamically configure `outputFile` path in `config.json`.
+  - Parsed `"network"` adapters and `"boardFanIdentifierPrefix"` configurations in the C# bridge.
+  - Implemented dynamic fan mapping fallback in `CodexBridge` that auto-detects motherboard RPM fan sensors on different hardware.
+  - Added IPv6 support by utilizing interface-level `GetIPStatistics` to prevent traffic underreporting.
+  - Enabled automatic IPC connection recovery in the C# bridge loop when FanControl is closed/reopened.
+  - Cleaned up obsolete `UpdateTemps.ps1` and duplicate `Watch-PrimaryDisplay.ps1` files.
 - Decided GitHub should become the primary source of truth for collaboration; local reinstall archives become optional staging after GitHub is live.
 - Split public project documentation from ignored local machine setup.
 - Changed config model to one local working `config.json`, created from committed `config.example.json`.
