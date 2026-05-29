@@ -48,6 +48,80 @@ function Get-WidgetWidth {
     return 430
 }
 
+function Get-IniNumber {
+    param(
+        [string]$Path,
+        [string]$Key,
+        [int]$Default
+    )
+
+    if (Test-Path -LiteralPath $Path) {
+        $escapedKey = [regex]::Escape($Key)
+        $line = Get-Content -LiteralPath $Path | Where-Object { $_ -match "^$escapedKey=(\d+)" } | Select-Object -First 1
+        if ($line -match "^$escapedKey=(\d+)") { return [int]$Matches[1] }
+    }
+
+    return $Default
+}
+
+function Get-AutoProfileMode {
+    param([int]$ScreenHeight)
+
+    if ($config.profiles.default -and $config.profiles.default -ne "Auto") {
+        return $config.profiles.default
+    }
+
+    $threshold = if ($config.display.autoProfileHeightThreshold -ne $null) { [int]$config.display.autoProfileHeightThreshold } else { 1440 }
+    $largeProfile = if ($config.profiles.large) { $config.profiles.large } else { "4K" }
+    $compactProfile = if ($config.profiles.compact) { $config.profiles.compact } else { "1080p" }
+    if ($ScreenHeight -ge $threshold) { return $largeProfile }
+    return $compactProfile
+}
+
+function Get-PresetPath {
+    param([string]$Mode)
+
+    $presetName = if ($Mode -eq "4K") { "CodexMonitor.4K.ini" } else { "CodexMonitor.1080p.ini" }
+    $candidates = @(
+        (Join-Path $InstallRoot "Presets\$presetName"),
+        (Join-Path $InstallRoot "Deploy\Payload\RainmeterSkin\CodexMonitor\$presetName")
+    )
+
+    return $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+}
+
+function Switch-ProfileIfNeeded {
+    param([System.Drawing.Rectangle]$ScreenBounds)
+
+    if ($config.profiles.auto -eq $false) { return }
+
+    $mode = Get-AutoProfileMode -ScreenHeight $ScreenBounds.Height
+    $preset = Get-PresetPath -Mode $mode
+    if (-not $preset) { return }
+
+    $skinPath = Get-RainmeterSkinPath
+    $skinIni = Join-Path $skinPath "CodexMonitor\CodexMonitor.ini"
+    $currentWidth = Get-IniNumber -Path $skinIni -Key "W" -Default 0
+    $currentHeight = Get-IniNumber -Path $skinIni -Key "H" -Default 0
+    $targetWidth = Get-IniNumber -Path $preset -Key "W" -Default $currentWidth
+    $targetHeight = Get-IniNumber -Path $preset -Key "H" -Default $currentHeight
+
+    if ($currentWidth -eq $targetWidth -and $currentHeight -eq $targetHeight) { return }
+
+    $switcher = Join-Path $InstallRoot "Deploy\Switch-WidgetSize.ps1"
+    if (-not (Test-Path -LiteralPath $switcher)) { return }
+
+    $args = @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $switcher,
+        "-Mode", $mode,
+        "-InstallRoot", $InstallRoot
+    )
+    if ($ConfigPath) { $args += @("-ConfigPath", $ConfigPath) }
+    & powershell.exe @args | Out-Null
+}
+
 function Set-IniKey {
     param(
         [System.Collections.Generic.List[string]]$Lines,
@@ -134,6 +208,7 @@ while ($true) {
     try {
         Add-Type -AssemblyName System.Windows.Forms
         $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+        Switch-ProfileIfNeeded -ScreenBounds $screen
         $width = Get-WidgetWidth
         $signature = "$($screen.X),$($screen.Y),$($screen.Width),$($screen.Height),$width"
         if ($signature -ne $lastSignature) {

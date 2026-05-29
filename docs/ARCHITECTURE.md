@@ -126,6 +126,7 @@ C:\CodexMonitor\Watch-PrimaryDisplay.ps1
 Responsibilities:
 
 - poll primary monitor every 5 seconds;
+- switch automatically between 1080p and 4K profiles when the primary monitor height crosses the configured threshold;
 - read current widget width from active skin;
 - move widget to top-right of primary monitor with 24 px margin;
 - write stable `WindowX`, `WindowY`, `AnchorX`, `AnchorY`, `AutoSelectScreen`, `SavePosition` values into Rainmeter.ini.

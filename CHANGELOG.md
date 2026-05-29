@@ -2,6 +2,7 @@
 
 ## 2026-05-29
 
+- Updated the display watcher to switch automatically between 1080p and 4K profiles when the primary display height changes.
 - Increased the 4K Rainmeter profile height to `720 x 1500`, normalized section icons, and re-spaced the cooling, network, disk I/O, and drive usage rows to prevent text/bar overlaps.
 - Replaced missing SVG icon references with built-in Rainmeter shape icons and spaced 4K drive bars away from drive labels.
 - Stopped the size switcher from rewriting tracked `CodexMonitor.ini` during runtime profile changes.
