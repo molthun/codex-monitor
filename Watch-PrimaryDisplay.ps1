@@ -125,7 +125,23 @@ function Check-ForPrerequisiteUpdates {
         if ($foundUpdates.Count -gt 0) {
             $apps = $foundUpdates | ForEach-Object { $_.Split(".")[-1] }
             $appsList = $apps -join ", "
-            Show-Notification "CodexMonitor Dependency Updates" "New updates available for: $appsList. Run Deploy\Upgrade-Prerequisites-And-Apps.ps1 to upgrade safely."
+            
+            # Show a standard message box prompt to make updates clickable
+            Add-Type -AssemblyName System.Windows.Forms
+            $result = [System.Windows.Forms.MessageBox]::Show(
+                "New updates are available for CodexMonitor dependencies: $appsList.`n`nWould you like to install them now?`n(This will temporarily close Rainmeter and FanControl to perform the update safely, then restart them)",
+                "CodexMonitor Dependency Updates",
+                [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                [System.Windows.Forms.MessageBoxIcon]::Question
+            )
+            
+            if ($result -eq [System.Windows.Forms.DialogResult]::Yes) {
+                $upgradeScript = Join-Path $InstallRoot "Deploy\Upgrade-Prerequisites-And-Apps.ps1"
+                if (Test-Path -LiteralPath $upgradeScript) {
+                    # Execute elevated with the -Auto switch to close automatically
+                    Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$upgradeScript`" -Auto" -Verb RunAs
+                }
+            }
         }
     }
     catch {

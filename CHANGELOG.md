@@ -2,8 +2,8 @@
 
 ## 2026-05-29
 
-- Created a dependency upgrade helper script `Deploy/Upgrade-Prerequisites-And-Apps.ps1` to stop active services safely, perform `winget` upgrades, and restore executing widgets.
-- Added daily winget upgrade checks in `Watch-PrimaryDisplay.ps1` to notify users via toast balloons when updates for Rainmeter, FanControl, Git, or .NET SDK are available.
+- Created a dependency upgrade helper script `Deploy/Upgrade-Prerequisites-And-Apps.ps1` to stop active services safely, perform `winget` upgrades, and restore executing widgets. Added an `-Auto` switch to close the console automatically when done.
+- Added daily winget upgrade checks in `Watch-PrimaryDisplay.ps1` that display an interactive GUI prompt to automatically run updates without manual terminal commands.
 - Created a GitHub bootstrap script `Deploy/Bootstrap-CodexMonitor.ps1` to clone the repository and run the setup cleanly from GitHub using a single PowerShell one-liner.
 - Added Git as a core prerequisite dependency in `Setup-CodexMonitor.ps1` and implemented session PATH updating to ensure commands run immediately upon install.
 - Added a unified `Setup-CodexMonitor.ps1` self-elevating setup manager script to automatically check and install prerequisites (Rainmeter, FanControl, and .NET 10 SDK/Runtime) via `winget`.

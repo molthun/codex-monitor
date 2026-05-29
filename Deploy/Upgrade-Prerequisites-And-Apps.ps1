@@ -1,5 +1,6 @@
-# CodexMonitor Dependency Upgrade Tool
-# Safely shuts down apps, runs winget updates, and restarts them.
+param(
+    [switch]$Auto
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -10,6 +11,7 @@ $adminRole = [System.Security.Principal.WindowsBuiltInRole]::Administrator
 if (-not $myWindowsPrincipal.IsInRole($adminRole)) {
     Write-Host "Elevating script to Administrator privilege..." -ForegroundColor Yellow
     $newArguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    if ($Auto) { $newArguments += " -Auto" }
     Start-Process -FilePath "powershell.exe" -ArgumentList $newArguments -Verb RunAs
     exit
 }
@@ -124,5 +126,7 @@ Write-Host "=============================================" -ForegroundColor Gree
 Write-Host "   Dependencies Upgraded & Widgets Restored  " -ForegroundColor Green
 Write-Host "=============================================" -ForegroundColor Green
 Write-Host ""
-Write-Host "Press any key to exit..."
-[void][System.Console]::ReadKey()
+if (-not $Auto) {
+    Write-Host "Press any key to exit..."
+    [void][System.Console]::ReadKey()
+}
