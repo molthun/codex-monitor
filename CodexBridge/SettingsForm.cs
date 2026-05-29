@@ -43,29 +43,33 @@ namespace CodexBridge
         private void InitializeComponent()
         {
             this.Text = "CodexMonitor Settings";
-            this.Size = new Size(480, 560);
+            this.ClientSize = new Size(480, 540);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
             this.StartPosition = FormStartPosition.CenterScreen;
-            this.BackColor = Color.FromArgb(28, 28, 28);
+            this.BackColor = Color.FromArgb(18, 18, 18);
             this.ForeColor = Color.White;
             this.Font = new Font("Segoe UI", 9.75f, FontStyle.Regular);
 
             // Title Header Panel
             Panel pnlHeader = new Panel
             {
-                Size = new Size(480, 60),
-                Dock = DockStyle.Top,
-                BackColor = Color.FromArgb(36, 36, 36)
+                Location = new Point(0, 0),
+                Size = new Size(480, 65),
+                BackColor = Color.FromArgb(26, 26, 26)
+            };
+            pnlHeader.Paint += (s, e) => {
+                using var pen = new Pen(Color.FromArgb(0, 183, 195), 2);
+                e.Graphics.DrawLine(pen, 0, 63, 480, 63); // Bottom accent line
             };
             Label lblTitle = new Label
             {
                 Text = "CodexMonitor Setup Wizard",
                 Font = new Font("Segoe UI Semibold", 14.25f, FontStyle.Bold),
-                Location = new Point(16, 16),
+                Location = new Point(20, 18),
                 AutoSize = true,
-                ForeColor = Color.FromArgb(0, 183, 195) // Accent color
+                ForeColor = Color.FromArgb(0, 229, 255) // Vibrant accent
             };
             pnlHeader.Controls.Add(lblTitle);
             this.Controls.Add(pnlHeader);
@@ -73,20 +77,19 @@ namespace CodexBridge
             // Main Body Content Container
             Panel pnlBody = new Panel
             {
-                Size = new Size(480, 410),
-                Dock = DockStyle.Fill,
-                Padding = new Padding(20)
+                Location = new Point(0, 65),
+                Size = new Size(480, 415),
+                BackColor = Color.FromArgb(18, 18, 18)
             };
             this.Controls.Add(pnlBody);
 
-            int yOffset = 10;
-
-            // Group 1: Display Scaling / Profile
-            GroupBox grpProfile = CreateGroupBox("1. Widget Size / Profile Mode", yOffset, 80);
+            // Card 1: Widget Size / Profile Mode
+            Panel cardProfile = CreateCard(20, 12, 440, 80);
+            Label lblProfileTitle = CreateCardTitle("1. Widget Size / Profile Mode", 15, 12);
             _cmbProfile = new ComboBox
             {
-                Location = new Point(15, 30),
-                Size = new Size(390, 25),
+                Location = new Point(15, 38),
+                Size = new Size(410, 25),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 BackColor = Color.FromArgb(45, 45, 45),
                 ForeColor = Color.White,
@@ -94,28 +97,31 @@ namespace CodexBridge
             };
             _cmbProfile.Items.AddRange(new object[] { "Auto (Detect resolution)", "1080p (Compact size)", "4K (Large size)" });
             _cmbProfile.SelectedIndex = 0;
-            grpProfile.Controls.Add(_cmbProfile);
-            pnlBody.Controls.Add(grpProfile);
-            yOffset += 95;
+            cardProfile.Controls.Add(lblProfileTitle);
+            cardProfile.Controls.Add(_cmbProfile);
+            pnlBody.Controls.Add(cardProfile);
 
-            // Group 2: Hard Drives Selection
-            GroupBox grpDrives = CreateGroupBox("2. Storage Drives to Display", yOffset, 95);
+            // Card 2: Hard Drives Selection
+            Panel cardDrives = CreateCard(20, 104, 440, 85);
+            Label lblDrivesTitle = CreateCardTitle("2. Storage Drives to Display", 15, 12);
             _pnlDrives = new FlowLayoutPanel
             {
-                Location = new Point(15, 30),
-                Size = new Size(390, 55),
-                AutoScroll = true
+                Location = new Point(15, 38),
+                Size = new Size(410, 38),
+                AutoScroll = true,
+                BackColor = Color.Transparent
             };
-            grpDrives.Controls.Add(_pnlDrives);
-            pnlBody.Controls.Add(grpDrives);
-            yOffset += 110;
+            cardDrives.Controls.Add(lblDrivesTitle);
+            cardDrives.Controls.Add(_pnlDrives);
+            pnlBody.Controls.Add(cardDrives);
 
-            // Group 3: Network Exclusions
-            GroupBox grpNetwork = CreateGroupBox("3. Network Adapter Filters (Ignore list)", yOffset, 90);
+            // Card 3: Network Exclusions
+            Panel cardNetwork = CreateCard(20, 201, 440, 95);
+            Label lblNetworkTitle = CreateCardTitle("3. Network Adapter Filters (Ignore list)", 15, 12);
             _txtNetworkExclusions = new TextBox
             {
-                Location = new Point(15, 30),
-                Size = new Size(390, 25),
+                Location = new Point(15, 38),
+                Size = new Size(410, 25),
                 BackColor = Color.FromArgb(45, 45, 45),
                 ForeColor = Color.White,
                 BorderStyle = BorderStyle.FixedSingle
@@ -123,35 +129,37 @@ namespace CodexBridge
             Label lblNetworkHelp = new Label
             {
                 Text = "Comma-separated terms to filter virtual switches or ignored cards.",
-                Font = new Font("Segoe UI", 8.25f, FontStyle.Italic),
-                Location = new Point(15, 60),
-                Size = new Size(390, 20),
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Italic),
+                Location = new Point(15, 68),
+                Size = new Size(410, 20),
                 ForeColor = Color.DarkGray
             };
-            grpNetwork.Controls.Add(_txtNetworkExclusions);
-            grpNetwork.Controls.Add(lblNetworkHelp);
-            pnlBody.Controls.Add(grpNetwork);
-            yOffset += 105;
+            cardNetwork.Controls.Add(lblNetworkTitle);
+            cardNetwork.Controls.Add(_txtNetworkExclusions);
+            cardNetwork.Controls.Add(lblNetworkHelp);
+            pnlBody.Controls.Add(cardNetwork);
 
-            // Group 4: Updates & Settings
-            GroupBox grpAdvanced = CreateGroupBox("4. Telemetry Update Rate & Updates", yOffset, 75);
+            // Card 4: Updates & Telemetry Rate
+            Panel cardAdvanced = CreateCard(20, 308, 440, 90);
+            Label lblAdvancedTitle = CreateCardTitle("4. Telemetry Update Rate & Updates", 15, 12);
             _chkAutoUpdate = new CheckBox
             {
                 Text = "Enable background automatic updates",
-                Location = new Point(15, 25),
+                Location = new Point(15, 42),
                 Size = new Size(250, 25),
                 FlatStyle = FlatStyle.Flat,
                 Checked = true
             };
             Label lblRate = new Label
             {
-                Text = "Update seconds:",
-                Location = new Point(275, 27),
-                Size = new Size(95, 25)
+                Text = "Update interval (sec):",
+                Location = new Point(265, 44),
+                Size = new Size(125, 25),
+                ForeColor = Color.White
             };
             _numUpdateRate = new NumericUpDown
             {
-                Location = new Point(370, 25),
+                Location = new Point(380, 42),
                 Size = new Size(45, 25),
                 Minimum = 1,
                 Maximum = 60,
@@ -160,17 +168,22 @@ namespace CodexBridge
                 ForeColor = Color.White,
                 BorderStyle = BorderStyle.FixedSingle
             };
-            grpAdvanced.Controls.Add(_chkAutoUpdate);
-            grpAdvanced.Controls.Add(lblRate);
-            grpAdvanced.Controls.Add(_numUpdateRate);
-            pnlBody.Controls.Add(grpAdvanced);
+            cardAdvanced.Controls.Add(lblAdvancedTitle);
+            cardAdvanced.Controls.Add(_chkAutoUpdate);
+            cardAdvanced.Controls.Add(lblRate);
+            cardAdvanced.Controls.Add(_numUpdateRate);
+            pnlBody.Controls.Add(cardAdvanced);
 
             // Bottom Command Button Panel
             Panel pnlBottom = new Panel
             {
+                Location = new Point(0, 480),
                 Size = new Size(480, 60),
-                Dock = DockStyle.Bottom,
-                BackColor = Color.FromArgb(36, 36, 36)
+                BackColor = Color.FromArgb(26, 26, 26)
+            };
+            pnlBottom.Paint += (s, e) => {
+                using var pen = new Pen(Color.FromArgb(45, 45, 45), 1);
+                e.Graphics.DrawLine(pen, 0, 0, 480, 0); // Top separator line
             };
             this.Controls.Add(pnlBottom);
 
@@ -186,6 +199,9 @@ namespace CodexBridge
                 Cursor = Cursors.Hand
             };
             _btnSave.FlatAppearance.BorderSize = 0;
+            // Hover effect
+            _btnSave.MouseEnter += (s, e) => _btnSave.BackColor = Color.FromArgb(0, 229, 255);
+            _btnSave.MouseLeave += (s, e) => _btnSave.BackColor = Color.FromArgb(0, 183, 195);
             _btnSave.Click += BtnSave_Click;
 
             _btnCancel = new Button
@@ -198,22 +214,46 @@ namespace CodexBridge
                 FlatStyle = FlatStyle.Flat,
                 Cursor = Cursors.Hand
             };
+            _btnCancel.FlatAppearance.BorderSize = 1;
             _btnCancel.FlatAppearance.BorderColor = Color.FromArgb(70, 70, 70);
+            _btnCancel.MouseEnter += (s, e) => {
+                _btnCancel.BackColor = Color.FromArgb(70, 70, 70);
+                _btnCancel.FlatAppearance.BorderColor = Color.FromArgb(90, 90, 90);
+            };
+            _btnCancel.MouseLeave += (s, e) => {
+                _btnCancel.BackColor = Color.FromArgb(50, 50, 50);
+                _btnCancel.FlatAppearance.BorderColor = Color.FromArgb(70, 70, 70);
+            };
             _btnCancel.Click += (s, e) => this.Close();
 
             pnlBottom.Controls.Add(_btnSave);
             pnlBottom.Controls.Add(_btnCancel);
         }
 
-        private GroupBox CreateGroupBox(string title, int y, int height)
+        private Panel CreateCard(int x, int y, int width, int height)
         {
-            return new GroupBox
+            var pnl = new Panel
+            {
+                Location = new Point(x, y),
+                Size = new Size(width, height),
+                BackColor = Color.FromArgb(24, 24, 24)
+            };
+            pnl.Paint += (s, e) => {
+                using var pen = new Pen(Color.FromArgb(48, 48, 48), 1);
+                e.Graphics.DrawRectangle(pen, 0, 0, width - 1, height - 1);
+            };
+            return pnl;
+        }
+
+        private Label CreateCardTitle(string title, int x, int y)
+        {
+            return new Label
             {
                 Text = title,
-                Location = new Point(20, y),
-                Size = new Size(420, height),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat
+                Location = new Point(x, y),
+                Font = new Font("Segoe UI Semibold", 9.75f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(0, 183, 195),
+                AutoSize = true
             };
         }
 

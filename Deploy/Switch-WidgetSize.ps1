@@ -135,6 +135,15 @@ $skinTarget = Join-Path $skinPath "CodexMonitor\CodexMonitor.ini"
 
 Copy-Item -LiteralPath $preset -Destination $skinTarget -Force
 
+# Automatically write BridgeExe variable and Context Menu items for easy settings GUI invocation
+$lines = [System.Collections.Generic.List[string]]::new()
+foreach ($line in (Get-Content -LiteralPath $skinTarget)) { $lines.Add($line) }
+$bridgeExePath = Join-Path $InstallRoot "CodexBridge\CodexBridge.exe"
+Set-IniKey -Lines $lines -Section "Variables" -Key "BridgeExe" -Value "`"$bridgeExePath`""
+Set-IniKey -Lines $lines -Section "Rainmeter" -Key "ContextTitle" -Value "Configure CodexMonitor"
+Set-IniKey -Lines $lines -Section "Rainmeter" -Key "ContextAction" -Value "[`"#BridgeExe#`" --settings]"
+Set-Content -LiteralPath $skinTarget -Value $lines -Encoding UTF8
+
 $position = Set-PrimaryMonitorPosition -SkinIni $skinTarget
 
 $rainmeterExe = if ($config.rainmeter.executable) { $config.rainmeter.executable } else { "C:\Program Files\Rainmeter\Rainmeter.exe" }
