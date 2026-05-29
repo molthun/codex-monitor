@@ -120,6 +120,6 @@ Start-ScheduledTask -TaskName "CodexMonitor Bridge Elevated"
 ## Current Size Profiles
 
 - 1080p: about `430 x 950`.
-- 4K: about `720 x 1400`.
+- 4K: about `720 x 1440`.
 
 The 4K profile is intentionally larger, but still uses a single-column layout so all values remain visible at a glance.

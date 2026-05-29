@@ -2,6 +2,7 @@
 
 ## 2026-05-29
 
+- Increased the 4K Rainmeter profile height to `720 x 1440` and re-spaced the cooling, network, disk I/O, and drive usage rows to prevent text/bar overlaps.
 - Replaced missing SVG icon references with built-in Rainmeter shape icons and spaced 4K drive bars away from drive labels.
 - Stopped the size switcher from rewriting tracked `CodexMonitor.ini` during runtime profile changes.
 - Refactored CodexBridge and Rainmeter setup to fix hardcoded paths, hardware-specific dependencies, and configuration mismatches:
@@ -25,7 +26,7 @@
   - `docs\DEVELOPMENT.md`
   - `docs\GITHUB.md`
 - Documented active paths, reinstall kit, runtime tasks, sensor contract, and collaboration rules.
-- Current 4K profile documented as approximately `720 x 1400`.
+- Current 4K profile documented as approximately `720 x 1440`.
 - Fixed header health background logic to use `HealthY`, `HealthH`, and `HealthR` variables instead of hard-coded 1080p coordinates in dynamic Rainmeter actions.
 - Rebuilt reinstall kit archive after the header fix.
 

@@ -176,7 +176,7 @@ HealthR=3
 
 ```text
 W=720
-H=1400
+H=1440
 BarW=660
 BarH=10
 HealthY=109
