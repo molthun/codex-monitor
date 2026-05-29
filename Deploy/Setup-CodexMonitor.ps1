@@ -49,6 +49,17 @@ if (-not (Test-Command "winget")) {
 }
 
 # Install dependencies
+if (-not (Test-Command "git")) {
+    Install-WingetPackage -Id "Git.Git" -Name "Git"
+    $gitCmdPath = "C:\Program Files\Git\cmd"
+    if (Test-Path -LiteralPath $gitCmdPath) {
+        $env:PATH += ";$gitCmdPath"
+        Write-Host "Appended Git path to environment PATH dynamically." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "Git is already installed." -ForegroundColor Green
+}
+
 Install-WingetPackage -Id "Rainmeter.Rainmeter" -Name "Rainmeter"
 Install-WingetPackage -Id "Rem0o.FanControl" -Name "FanControl"
 

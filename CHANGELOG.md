@@ -2,6 +2,8 @@
 
 ## 2026-05-29
 
+- Created a GitHub bootstrap script `Deploy/Bootstrap-CodexMonitor.ps1` to clone the repository and run the setup cleanly from GitHub using a single PowerShell one-liner.
+- Added Git as a core prerequisite dependency in `Setup-CodexMonitor.ps1` and implemented session PATH updating to ensure commands run immediately upon install.
 - Added a unified `Setup-CodexMonitor.ps1` self-elevating setup manager script to automatically check and install prerequisites (Rainmeter, FanControl, and .NET 10 SDK/Runtime) via `winget`.
 - Created an interactive `Configure-CodexMonitor.ps1` CLI configuration wizard to dynamically scan local disk drives and network adapters, guide profile choices, and save system configurations to `config.json` without manual text editing.
 - Integrated a background Git auto-updater loop inside `Watch-PrimaryDisplay.ps1` to pull remote Git updates, automatically rebuild the C# bridge, and reload the widget every 6 hours.

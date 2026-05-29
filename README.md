@@ -51,18 +51,21 @@ config.example.json
 
 Edit `config.json` directly on your workstation. Scripts pick it up on the next run; long-running services should be restarted after config changes.
 
-On any computer, to install and configure everything from scratch, run the unified setup launcher:
+To install and configure everything from scratch on a clean PC, run this one-liner in an elevated PowerShell console:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File "C:\CodexMonitor\Deploy\Setup-CodexMonitor.ps1"
+Set-ExecutionPolicy Bypass -Scope Process -Force; irm https://raw.githubusercontent.com/molthun/codex-monitor/main/Deploy/Bootstrap-CodexMonitor.ps1 | iex
 ```
 
-This script will:
+This bootstrap command will:
 1. Request **Administrator** elevation.
-2. Detect and install all prerequisites (**Rainmeter**, **FanControl**, and the **.NET 10 SDK/Runtime**) using `winget`.
-3. Launch FanControl and guide you to enable its "JSON Sensor File" setting to publish temperature data.
-4. Launch the interactive **Configuration Wizard** (`Configure-CodexMonitor.ps1`) to choose widget scaling (Auto, 1080p, 4K), choose which local disk drives to display, set up network interface exclusions, and toggle the background auto-updater.
-5. Compile the .NET bridge from source, configure the startup shortcut, register the elevated scheduled tasks, update active `Rainmeter.ini` settings, and load/activate the CodexMonitor skin.
+2. Verify and install **Git** (using `winget`) and update the path so it is immediately usable.
+3. Clone the repository directly from GitHub to `C:\CodexMonitor`.
+4. Hand off execution to the main installer (`Setup-CodexMonitor.ps1`), which will:
+   - Detect and install all remaining prerequisites (**Rainmeter**, **FanControl**, and the **.NET 10 SDK/Runtime**) using `winget`.
+   - Launch FanControl and guide you to enable its "JSON Sensor File" setting.
+   - Run the interactive **Configuration Wizard** (`Configure-CodexMonitor.ps1`) to choose widget scaling (Auto, 1080p, 4K), choose which local disk drives to display, and set up network interface exclusions.
+   - Compile the .NET bridge, configure the startup shortcut, register the elevated scheduled tasks, configure active `Rainmeter.ini` layout/coordinates, and load/activate the CodexMonitor skin.
 
 ## Source Of Truth
 
