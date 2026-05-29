@@ -51,7 +51,7 @@ if (-not (Test-Path -LiteralPath $bridgeExe)) {
 
 if (-not (Test-Path -LiteralPath $bridgeExe)) {
     # Fallback to search in bin/Release/publish or similar
-    $devPath = Get-ChildItem -Path $projectRoot -Filter "CodexBridge.exe" -Recurse -File -ErrorAction SilentlyContinue | 
+    $devPath = Get-ChildItem -Path $projectRoot -Filter "CodexBridge.exe" -Recurse -File -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -like "*publish*" } | Select-Object -First 1
     if ($devPath) {
         $bridgeExe = $devPath.FullName

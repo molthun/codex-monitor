@@ -29,7 +29,7 @@ if (settingsMode)
 var config = ReadConfig(configPath);
 var root = config.InstallRoot ?? @"C:\CodexMonitor";
 var outFile = config.BridgeOutputFile ?? Path.Combine(root, @"@Resources\temps.txt");
-var dumpMode = args.Any(a => string.Equals(a, "--once", StringComparison.OrdinalIgnoreCase) || args.Any(a => string.Equals(a, "--dump", StringComparison.OrdinalIgnoreCase)));
+var dumpMode = args.Any(a => string.Equals(a, "--dump", StringComparison.OrdinalIgnoreCase));
 var onceMode = args.Any(a => string.Equals(a, "--once", StringComparison.OrdinalIgnoreCase) || dumpMode);
 
 Directory.CreateDirectory(Path.GetDirectoryName(outFile)!);
