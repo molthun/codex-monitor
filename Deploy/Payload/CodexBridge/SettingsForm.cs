@@ -29,15 +29,15 @@ namespace CodexBridge
 
         public SettingsForm(string configPath)
         {
-            _configPath = configPath;
+            _configPath = configPath.Trim('\"');
 
             // Traverse upwards to locate the install root containing the Deploy directory
-            var currentDir = Path.GetDirectoryName(configPath);
+            var currentDir = Path.GetDirectoryName(_configPath);
             while (currentDir != null && !Directory.Exists(Path.Combine(currentDir, "Deploy")))
             {
                 currentDir = Path.GetDirectoryName(currentDir);
             }
-            _installRoot = currentDir ?? Path.GetDirectoryName(configPath) ?? @"C:\CodexMonitor";
+            _installRoot = currentDir ?? Path.GetDirectoryName(_configPath) ?? @"C:\CodexMonitor";
 
             InitializeComponent();
             LoadSettings();
@@ -111,22 +111,19 @@ namespace CodexBridge
                 Text = "Auto (Detect)",
                 Location = new Point(15, 38),
                 Size = new Size(130, 25),
-                FlatStyle = FlatStyle.Flat,
                 Checked = true
             };
             _rdo1080p = new RadioButton
             {
                 Text = "1080p (Compact)",
                 Location = new Point(150, 38),
-                Size = new Size(140, 25),
-                FlatStyle = FlatStyle.Flat
+                Size = new Size(140, 25)
             };
             _rdo4K = new RadioButton
             {
                 Text = "4K (Large)",
                 Location = new Point(295, 38),
-                Size = new Size(110, 25),
-                FlatStyle = FlatStyle.Flat
+                Size = new Size(110, 25)
             };
             cardProfile.Controls.Add(lblProfileTitle);
             cardProfile.Controls.Add(_rdoAuto);
@@ -191,7 +188,6 @@ namespace CodexBridge
                 Text = "Enable background automatic updates",
                 Location = new Point(15, 35),
                 Size = new Size(410, 25),
-                FlatStyle = FlatStyle.Flat,
                 Checked = true
             };
             Label lblRate = new Label
@@ -331,8 +327,7 @@ namespace CodexBridge
                     Tag = rawPrefix,
                     Size = new Size(380, 25),
                     Margin = new Padding(0, 2, 0, 2),
-                    ForeColor = Color.White,
-                    FlatStyle = FlatStyle.Flat
+                    ForeColor = Color.White
                 };
                 _pnlDrives.Controls.Add(chk);
             }
