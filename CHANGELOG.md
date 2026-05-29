@@ -2,6 +2,7 @@
 
 ## 2026-05-29
 
+- Updated installer, documentation, sensor contract, skin metadata, and public config to reflect direct LibreHardwareMonitor sensor telemetry; FanControl is now optional for fan-curve control rather than required for widget data.
 - Decoupled `CodexBridge` from FanControl by integrating `LibreHardwareMonitorLib` directly into the C# project to query CPU, GPU, and motherboard sensors natively. The bridge is now fully autonomous and does not require FanControl to be running.
 - Updated `Install-CodexMonitor.ps1` and `Watch-PrimaryDisplay.ps1` to compile the bridge using `dotnet publish` (with `-r win-x64` and `--self-contained false`) to copy all required NuGet DLL files (`LibreHardwareMonitorLib.dll`, etc.) to the target directory.
 - Created `docs/DEPENDENCY_ANALYSIS.md` evaluating third-party dependencies and documenting simplification strategies.
@@ -10,7 +11,7 @@
 - Added daily winget upgrade checks in `Watch-PrimaryDisplay.ps1` that display an interactive GUI prompt to automatically run updates without manual terminal commands.
 - Created a GitHub bootstrap script `Deploy/Bootstrap-CodexMonitor.ps1` to clone the repository and run the setup cleanly from GitHub using a single PowerShell one-liner.
 - Added Git as a core prerequisite dependency in `Setup-CodexMonitor.ps1` and implemented session PATH updating to ensure commands run immediately upon install.
-- Added a unified `Setup-CodexMonitor.ps1` self-elevating setup manager script to automatically check and install prerequisites (Rainmeter, FanControl, and .NET 10 SDK/Runtime) via `winget`.
+- Added a unified `Setup-CodexMonitor.ps1` self-elevating setup manager script to automatically check and install prerequisites (Rainmeter and .NET 10 SDK/Runtime) via `winget`.
 - Created an interactive `Configure-CodexMonitor.ps1` CLI configuration wizard to dynamically scan local disk drives and network adapters, guide profile choices, and save system configurations to `config.json` without manual text editing.
 - Integrated a background Git auto-updater loop inside `Watch-PrimaryDisplay.ps1` to pull remote Git updates, automatically rebuild the C# bridge, and reload the widget every 6 hours.
 - Synchronized the root and payload default skins with the 1080p preset, preserving variable-based health background sizing, and made 4K section icons use the committed PNG assets consistently.

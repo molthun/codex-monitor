@@ -3,7 +3,7 @@
 ## Data Flow
 
 ```text
-FanControl sensors
+LibreHardwareMonitor sensors
         |
         v
 C:\CodexMonitor\CodexBridge\bin\Release\net10.0\CodexBridge.exe
@@ -65,8 +65,8 @@ C:\CodexMonitor\CodexBridge\Program.cs
 
 Responsibilities:
 
-- connect to FanControl IPC;
-- query all FanControl sensors;
+- initialize LibreHardwareMonitor hardware access;
+- query CPU, GPU, motherboard/SuperIO, controller, and fan sensors directly;
 - pick CPU/GPU/board fan sensors;
 - query NVIDIA fallback data with `nvidia-smi.exe`;
 - compute Ethernet/Wi-Fi/Wi-Fi AP rates;
@@ -78,12 +78,12 @@ Modes:
 
 - normal mode: runs forever;
 - `--once`: writes once and exits;
-- `--dump`: prints available FanControl sensors and exits.
+- `--dump`: prints available LibreHardwareMonitor sensors and exits.
 
 Single-instance guard:
 
 ```text
-CodexMonitorFanControlBridge
+CodexMonitorHardwareBridge
 ```
 
 ### Rainmeter Skin
@@ -176,7 +176,6 @@ File:
 Installs with `winget`:
 
 - Rainmeter;
-- FanControl;
 - .NET 10 Desktop Runtime.
 
 Then runs the restore script.

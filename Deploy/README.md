@@ -17,11 +17,11 @@ This folder contains everything needed to restore the Rainmeter desktop monitor 
 Install these first:
 
 1. Rainmeter 4.5.x or newer.
-2. FanControl v268 or newer.
-3. NVIDIA driver with `nvidia-smi.exe`.
-4. .NET 10 Desktop Runtime if the bridge does not start. FanControl v268 usually already implies a .NET 10-capable setup.
+2. NVIDIA driver with `nvidia-smi.exe` if NVIDIA GPU fallback data is desired.
+3. .NET 10 Desktop Runtime if the bridge does not start.
+4. Optional: FanControl if you use it to manage fan curves.
 
-FanControl must be running and able to see the sensors before the bridge can publish CPU/GPU/fan values.
+The bridge reads CPU/GPU/fan values directly through LibreHardwareMonitor. FanControl does not need to run for CodexMonitor sensor display.
 
 ## Restore
 
@@ -65,5 +65,5 @@ powershell -ExecutionPolicy Bypass -File C:\CodexMonitor\Deploy\Uninstall-CodexM
 
 - The bridge writes sensor/network values to `C:\CodexMonitor\@Resources\temps.txt`.
 - Rainmeter reads that file once per second.
-- The bridge scheduled task runs with highest privileges because FanControl often runs elevated.
+- The bridge scheduled task runs with highest privileges because low-level hardware sensors often require elevated access.
 - If the widget appears in the wrong place after reinstall, adjust it once in Rainmeter, then run `Backup-CodexMonitor.ps1` or refresh this deploy kit.

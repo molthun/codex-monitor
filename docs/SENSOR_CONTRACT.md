@@ -37,7 +37,7 @@ NetWifiActiveInMbps=0.0
 NetWifiActiveOutMbps=0.0
 NetWifiActiveDlMbps=0.0
 NetWifiActiveUlMbps=0.0
-BridgeSource=FanControl+NvidiaSmi
+BridgeSource=LibreHardwareMonitor+NvidiaSmi
 ```
 
 ## Meaning
@@ -49,8 +49,8 @@ BridgeSource=FanControl+NvidiaSmi
 - `GPUFan`: GPU fan speed in RPM if available.
 - `GPUFanPct`: GPU fan speed percent if available.
 - `CPUFan`: CPU cooler RPM.
-- `BoardFan1..BoardFan7`: motherboard fan channels as exposed by FanControl.
-- `PSUFan`: explicit PSU fan sensor if FanControl exposes one.
+- `BoardFan1..BoardFan7`: motherboard/SuperIO fan channels exposed by LibreHardwareMonitor.
+- `PSUFan`: explicit PSU fan sensor if LibreHardwareMonitor exposes one.
 - `NetEthInMbps`, `NetEthOutMbps`: Ethernet receive/transmit Mbps.
 - `NetWifiInMbps`, `NetWifiOutMbps`: Wi-Fi client receive/transmit Mbps.
 - `NetWifiApInMbps`, `NetWifiApOutMbps`: Wi-Fi Direct/AP receive/transmit Mbps.
@@ -87,7 +87,7 @@ The output of the bridge is customizable via the workstation's `config.json`:
 
 ## Debugging
 
-Dump FanControl sensors:
+Dump LibreHardwareMonitor sensors:
 
 ```powershell
 & "C:\CodexMonitor\CodexBridge\bin\Release\net10.0\CodexBridge.exe" --dump

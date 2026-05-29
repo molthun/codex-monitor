@@ -25,7 +25,6 @@ if (-not (Test-Command "winget")) {
 }
 
 Install-WingetPackage -Id "Rainmeter.Rainmeter" -Name "Rainmeter"
-Install-WingetPackage -Id "Rem0o.FanControl" -Name "FanControl"
 
 if (-not $SkipDotNet) {
     $hasSdk10 = $false
@@ -42,13 +41,8 @@ if (-not $SkipDotNet) {
     }
 }
 
-$fanControlExe = "C:\Program Files (x86)\FanControl\FanControl.exe"
-if (Test-Path -LiteralPath $fanControlExe) {
-    Write-Host ""
-    Write-Host "Starting FanControl..."
-    Start-Process -FilePath $fanControlExe
-    Start-Sleep -Seconds 3
-}
+Write-Host ""
+Write-Host "FanControl is optional. CodexMonitor reads sensor telemetry directly through LibreHardwareMonitor."
 
 $restoreScript = Join-Path $PSScriptRoot "Install-CodexMonitor.ps1"
 Write-Host ""

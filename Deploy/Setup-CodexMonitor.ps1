@@ -61,7 +61,6 @@ if (-not (Test-Command "git")) {
 }
 
 Install-WingetPackage -Id "Rainmeter.Rainmeter" -Name "Rainmeter"
-Install-WingetPackage -Id "Rem0o.FanControl" -Name "FanControl"
 
 # Install .NET 10 SDK/Runtime if not present
 $hasSdk10 = $false
@@ -74,21 +73,8 @@ if (-not $hasSdk10) {
     Write-Host ".NET 10 SDK is already installed." -ForegroundColor Green
 }
 
-# Open FanControl to allow configuring sensors
-$fanControlPaths = @(
-    "C:\Program Files (x86)\FanControl\FanControl.exe",
-    "$env:LOCALAPPDATA\FanControl\FanControl.exe"
-)
-$fanControlExe = $fanControlPaths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-
-if ($fanControlExe) {
-    Write-Host ""
-    Write-Host "Starting FanControl..." -ForegroundColor Green
-    Start-Process -FilePath $fanControlExe
-    Write-Host "IMPORTANT: Please make sure FanControl is running, and that you have enabled 'JSON Sensor File' output in FanControl settings to share temperature data with CodexMonitor." -ForegroundColor Yellow
-} else {
-    Write-Warning "FanControl executable path not found. Please install and run FanControl."
-}
+Write-Host ""
+Write-Host "CodexMonitor reads hardware sensors directly through LibreHardwareMonitor. FanControl is optional and only needed if you use it to manage fan curves." -ForegroundColor Green
 
 # Run the Configuration Wizard
 $wizardScript = Join-Path $PSScriptRoot "Configure-CodexMonitor.ps1"

@@ -45,14 +45,13 @@ Optional local reinstall/staging folder:
 Document local fan/sensor mapping here:
 
 ```text
-CPU cooler = <FanControl sensor name / identifier>
-Case fan = <FanControl sensor name / identifier>
-PSU fan = <FanControl sensor name / identifier>
-GPU fans = <FanControl or nvidia-smi>
+CPU cooler = <LibreHardwareMonitor sensor name / identifier>
+Case fan = <LibreHardwareMonitor sensor name / identifier>
+PSU fan = <LibreHardwareMonitor sensor name / identifier>
+GPU fans = <LibreHardwareMonitor or nvidia-smi>
 ```
 
 ## Notes
 
 - Add anything needed for this exact machine.
 - Do not commit this copied local file.
-

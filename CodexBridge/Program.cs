@@ -17,7 +17,7 @@ var onceMode = args.Any(a => string.Equals(a, "--once", StringComparison.Ordinal
 
 Directory.CreateDirectory(Path.GetDirectoryName(outFile)!);
 
-using var mutex = new Mutex(initiallyOwned: true, name: config.BridgeMutexName ?? "CodexMonitorFanControlBridge", out var createdNew);
+using var mutex = new Mutex(initiallyOwned: true, name: config.BridgeMutexName ?? "CodexMonitorHardwareBridge", out var createdNew);
 if (!createdNew && !onceMode)
 {
     return;

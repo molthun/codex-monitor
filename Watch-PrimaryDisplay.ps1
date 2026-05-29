@@ -151,7 +151,10 @@ function Check-ForPrerequisiteUpdates {
     if (-not (Test-Command "winget")) { return }
 
     try {
-        $packageIds = @("Rem0o.FanControl", "Rainmeter.Rainmeter", "Microsoft.DotNet.SDK.10", "Git.Git")
+        $packageIds = @("Rainmeter.Rainmeter", "Microsoft.DotNet.SDK.10", "Git.Git")
+        if (Get-Process FanControl -ErrorAction SilentlyContinue) {
+            $packageIds += "Rem0o.FanControl"
+        }
         $foundUpdates = @()
 
         $output = winget list --upgrade-available 2>$null
@@ -170,7 +173,7 @@ function Check-ForPrerequisiteUpdates {
             # Show a standard message box prompt to make updates clickable
             Add-Type -AssemblyName System.Windows.Forms
             $result = [System.Windows.Forms.MessageBox]::Show(
-                "New updates are available for CodexMonitor dependencies: $appsList.`n`nWould you like to install them now?`n(This will temporarily close Rainmeter and FanControl to perform the update safely, then restart them)",
+                "New updates are available for CodexMonitor dependencies: $appsList.`n`nWould you like to install them now?`n(This will temporarily close affected applications to perform the update safely, then restart them)",
                 "CodexMonitor Dependency Updates",
                 [System.Windows.Forms.MessageBoxButtons]::YesNo,
                 [System.Windows.Forms.MessageBoxIcon]::Question

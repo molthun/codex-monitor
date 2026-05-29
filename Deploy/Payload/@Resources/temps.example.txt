@@ -24,4 +24,4 @@ NetWifiActiveInMbps=0.0
 NetWifiActiveOutMbps=0.0
 NetWifiActiveDlMbps=0.0
 NetWifiActiveUlMbps=0.0
-BridgeSource=FanControl+NvidiaSmi
+BridgeSource=LibreHardwareMonitor+NvidiaSmi

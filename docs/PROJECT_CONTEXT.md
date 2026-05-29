@@ -45,22 +45,19 @@ The widget shows:
 
 ## Supported Environment
 
-This project targets Windows + Rainmeter + FanControl:
+This project targets Windows + Rainmeter + LibreHardwareMonitor:
 
 - Windows 11 or newer is recommended.
 - Rainmeter 4.5.x or newer.
-- FanControl v268 or newer.
-- .NET 10 Desktop Runtime.
+- .NET 10 SDK/runtime for source-based install and bridge execution.
 - NVIDIA driver with `nvidia-smi.exe` if NVIDIA GPU fallback data is desired.
+- Optional: FanControl if the user wants to manage fan curves separately from CodexMonitor.
 
-Hardware sensor availability depends on the motherboard, firmware, drivers, Windows security settings, and FanControl support. Keep exact local sensor mapping in `docs\LOCAL_SETUP.md`.
+Hardware sensor availability depends on the motherboard, firmware, drivers, Windows security settings, and LibreHardwareMonitor support. Keep exact local sensor mapping in `docs\LOCAL_SETUP.md`.
 
 ## Main Approach
 
-FanControl is the hardware sensor source. A .NET bridge uses `FanControl.IPC.dll`:
-
-- `IPCFactory.GetSensorClient()`
-- `GetAllSensorsAsync(new GetAllSensorsRequest())`
+LibreHardwareMonitor is the hardware sensor source. A .NET bridge references `LibreHardwareMonitorLib` and queries hardware sensors directly.
 
 The bridge writes a flat key/value file:
 
@@ -72,7 +69,7 @@ Rainmeter reads that file using `WebParser` measures.
 
 ## Why This Architecture Exists
 
-Direct sensor access can be unreliable on modern Windows systems, especially when Memory Integrity/HVCI or driver restrictions are involved. FanControl already solves most hardware access problems, so the project treats it as the sensor authority and keeps Rainmeter simple.
+Rainmeter stays simple by reading one flat text file. Direct hardware access is isolated inside the elevated .NET bridge, which uses LibreHardwareMonitor and falls back to `nvidia-smi.exe` for NVIDIA GPU temperature/fan percentage when available.
 
 ## Standard Paths
 

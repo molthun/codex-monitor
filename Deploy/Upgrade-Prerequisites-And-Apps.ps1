@@ -43,7 +43,7 @@ if (-not (Test-Command "winget")) {
 }
 
 # 1. Stop active processes to prevent file locking
-Write-Host "Stopping CodexBridge, Rainmeter, and FanControl..." -ForegroundColor Yellow
+Write-Host "Stopping CodexBridge, Rainmeter, and optional FanControl if running..." -ForegroundColor Yellow
 
 # Track if they were running so we can restart them
 $wasRainmeterRunning = [bool](Get-Process Rainmeter -ErrorAction SilentlyContinue)
@@ -83,7 +83,9 @@ function Upgrade-App {
 
 Upgrade-App -Id "Git.Git" -Name "Git"
 Upgrade-App -Id "Rainmeter.Rainmeter" -Name "Rainmeter"
-Upgrade-App -Id "Rem0o.FanControl" -Name "FanControl"
+if ($wasFanControlRunning) {
+    Upgrade-App -Id "Rem0o.FanControl" -Name "FanControl"
+}
 Upgrade-App -Id "Microsoft.DotNet.SDK.10" -Name ".NET 10 SDK"
 
 # 3. Restart processes
