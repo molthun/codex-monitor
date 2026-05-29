@@ -115,7 +115,7 @@ The PowerShell launcher prepares/updates the local `config.json`, locates the in
 The wizard currently covers:
 
 - widget profile mode: Auto, 1080p, or 4K;
-- displayed disk drives;
+- displayed disk rows, up to three local drives;
 - network adapter ignore terms;
 - background update toggle;
 - bridge telemetry update interval.

@@ -22,8 +22,8 @@ The widget is intentionally configured as part of the desktop, not as an always-
 - Board/case/PSU fan display based on hardware sensor mapping.
 - Ethernet, Wi-Fi, and Wi-Fi AP traffic split.
 - Network graph and download/upload bars.
-- Per-disk I/O for C:, D:, E:.
-- Disk used/free bars for C:, D:, E:.
+- Per-disk I/O for up to three selected local drives.
+- Disk used/free bars for up to three selected local drives.
 - Automatic 1080p/4K skin profile selection.
 - Automatic positioning on the current primary monitor.
 - Graphical settings wizard for profile, disk, network, telemetry, and update options.
@@ -63,20 +63,8 @@ This bootstrap command will:
 3. Save a local version marker so future background updates can compare against GitHub.
 4. Hand off execution to the main installer (`Setup-CodexMonitor.ps1`), which will:
    - Detect and install all remaining prerequisites (**Rainmeter**) using `winget`.
-   - Run the graphical **Configuration Wizard** (`Configure-CodexMonitor.ps1`, backed by `CodexBridge.exe --settings`) to choose widget scaling (Auto, 1080p, 4K), choose which local disk drives to display, set network interface exclusions, and configure update behavior.
+   - Run the graphical **Configuration Wizard** (`Configure-CodexMonitor.ps1`, backed by `CodexBridge.exe --settings`) to choose widget scaling (Auto, 1080p, 4K), choose up to three local disk rows, set network interface exclusions, and configure update behavior.
    - Copy the bundled bridge executable, configure the startup shortcut, register the elevated scheduled tasks, configure active `Rainmeter.ini` layout/coordinates, and load/activate the CodexMonitor skin.
-
-## Source Of Truth
-
-Going forward, GitHub should be the primary source of truth for developers:
-
-- source code;
-- Rainmeter skin and presets;
-- install/watch/switch scripts;
-- project documentation;
-- changelog.
-
-Any local reinstall/staging folder is only a recovery convenience. Do not treat a local zip archive as the canonical project state after GitHub is live.
 
 ## Quick Developer Orientation
 

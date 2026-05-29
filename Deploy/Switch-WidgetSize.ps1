@@ -81,6 +81,28 @@ function Get-WidgetWidth {
     return 430
 }
 
+function Get-DiskRows {
+    $defaults = @("C:", "D:", "E:")
+    $rows = @()
+    if ($config.disks) {
+        foreach ($disk in $config.disks) {
+            if ($null -eq $disk) { continue }
+            $name = ([string]$disk).Trim().TrimEnd("\")
+            if ($name -match "^[A-Za-z]:$" -and -not ($rows -contains $name)) {
+                $rows += $name.ToUpperInvariant()
+            }
+            if ($rows.Count -ge 3) { break }
+        }
+    }
+
+    foreach ($fallback in $defaults) {
+        if ($rows.Count -ge 3) { break }
+        if (-not ($rows -contains $fallback)) { $rows += $fallback }
+    }
+
+    return $rows
+}
+
 function Set-PrimaryMonitorPosition {
     param([string]$SkinIni)
 
@@ -132,6 +154,10 @@ if (-not $preset) {
 
 $skinPath = Get-RainmeterSkinPath
 $skinTarget = Join-Path $skinPath "CodexMonitor\CodexMonitor.ini"
+$skinTargetDir = Split-Path -Parent $skinTarget
+if (-not (Test-Path -LiteralPath $skinTargetDir)) {
+    New-Item -ItemType Directory -Path $skinTargetDir -Force | Out-Null
+}
 
 Copy-Item -LiteralPath $preset -Destination $skinTarget -Force
 
@@ -140,8 +166,12 @@ $lines = [System.Collections.Generic.List[string]]::new()
 foreach ($line in (Get-Content -LiteralPath $skinTarget)) { $lines.Add($line) }
 $bridgeExePath = Join-Path $InstallRoot "CodexBridge\CodexBridge.exe"
 $settingsConfigPath = if ($ConfigPath) { $ConfigPath } else { Join-Path $InstallRoot "config.json" }
+$diskRows = Get-DiskRows
 Set-IniKey -Lines $lines -Section "Variables" -Key "BridgeExe" -Value $bridgeExePath
 Set-IniKey -Lines $lines -Section "Variables" -Key "ConfigPath" -Value $settingsConfigPath
+Set-IniKey -Lines $lines -Section "Variables" -Key "Disk1" -Value $diskRows[0]
+Set-IniKey -Lines $lines -Section "Variables" -Key "Disk2" -Value $diskRows[1]
+Set-IniKey -Lines $lines -Section "Variables" -Key "Disk3" -Value $diskRows[2]
 Set-IniKey -Lines $lines -Section "Rainmeter" -Key "ContextTitle" -Value "Configure CodexMonitor"
 Set-IniKey -Lines $lines -Section "Rainmeter" -Key "ContextAction" -Value "[`"#BridgeExe#`" --settings --config `"#ConfigPath#`"]"
 Set-Content -LiteralPath $skinTarget -Value $lines -Encoding UTF8

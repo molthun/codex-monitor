@@ -1,13 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Windows.Forms;
-using System.Drawing;
-using System.Text.Json;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Diagnostics;
 using System.Net.NetworkInformation;
+using System.Text.Json;
+using System.Windows.Forms;
 
 namespace CodexBridge
 {
@@ -24,14 +23,22 @@ namespace CodexBridge
         private TextBox _txtNetworkExclusions = null!;
         private CheckBox _chkAutoUpdate = null!;
         private ComboBox _cmbUpdateRate = null!;
+        private Label _lblApplyStatus = null!;
         private Button _btnSave = null!;
         private Button _btnCancel = null!;
 
+        private static readonly Color Back = Color.FromArgb(18, 20, 24);
+        private static readonly Color Card = Color.FromArgb(27, 31, 36);
+        private static readonly Color Border = Color.FromArgb(58, 68, 76);
+        private static readonly Color TextMain = Color.FromArgb(238, 243, 247);
+        private static readonly Color TextMuted = Color.FromArgb(166, 178, 188);
+        private static readonly Color Accent = Color.FromArgb(0, 210, 230);
+        private static readonly Color AccentSoft = Color.FromArgb(74, 226, 181);
+
         public SettingsForm(string configPath)
         {
-            _configPath = configPath.Trim('\"');
+            _configPath = configPath.Trim('"');
 
-            // Traverse upwards to locate the install root containing the Deploy directory
             var currentDir = Path.GetDirectoryName(_configPath);
             while (currentDir != null && !Directory.Exists(Path.Combine(currentDir, "Deploy")))
             {
@@ -45,18 +52,230 @@ namespace CodexBridge
 
         private void InitializeComponent()
         {
-            this.Text = "CodexMonitor Settings";
-            this.ClientSize = new Size(480, 640);
-            this.FormBorderStyle = FormBorderStyle.FixedDialog;
-            this.MaximizeBox = false;
-            this.MinimizeBox = false;
-            this.StartPosition = FormStartPosition.CenterScreen;
-            this.BackColor = Color.FromArgb(18, 18, 18);
-            this.ForeColor = Color.White;
-            this.Font = new Font("Segoe UI", 9.75f, FontStyle.Regular);
+            Text = "CodexMonitor Settings";
+            ClientSize = new Size(620, 690);
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            StartPosition = FormStartPosition.CenterScreen;
+            BackColor = Back;
+            ForeColor = TextMain;
+            Font = new Font("Segoe UI", 9.5f, FontStyle.Regular);
 
-            // Fetch active network adapters for guidance
-            string activeAdapters = "Active adapters: None";
+            var header = new Panel
+            {
+                Location = new Point(0, 0),
+                Size = new Size(620, 96),
+                BackColor = Color.FromArgb(12, 16, 21)
+            };
+            header.Paint += (s, e) =>
+            {
+                using var accentPen = new Pen(Accent, 2);
+                e.Graphics.DrawLine(accentPen, 0, 94, 620, 94);
+            };
+
+            var title = new Label
+            {
+                Text = "CodexMonitor Settings",
+                Location = new Point(24, 18),
+                AutoSize = true,
+                Font = new Font("Segoe UI Semibold", 16.0f, FontStyle.Bold),
+                ForeColor = Accent
+            };
+            var subtitle = new Label
+            {
+                Text = "Choose what the desktop widget displays. CodexMonitor only monitors hardware; fan control stays with your BIOS, drivers, or existing tools.",
+                Location = new Point(24, 50),
+                Size = new Size(560, 38),
+                Font = new Font("Segoe UI", 9.25f, FontStyle.Regular),
+                ForeColor = TextMuted
+            };
+            header.Controls.Add(title);
+            header.Controls.Add(subtitle);
+            Controls.Add(header);
+
+            var body = new Panel
+            {
+                Location = new Point(0, 96),
+                Size = new Size(620, 528),
+                BackColor = Back
+            };
+            Controls.Add(body);
+
+            var profile = CreateCard(24, 18, 572, 96, "Widget size", "Auto follows the primary display. Use a fixed size only if you prefer a specific layout.");
+            _rdoAuto = CreateRadio("Auto, recommended", 18, 50, 160, true);
+            _rdo1080p = CreateRadio("Compact 1080p", 200, 50, 150, false);
+            _rdo4K = CreateRadio("Large 4K", 380, 50, 120, false);
+            profile.Controls.Add(_rdoAuto);
+            profile.Controls.Add(_rdo1080p);
+            profile.Controls.Add(_rdo4K);
+            body.Controls.Add(profile);
+
+            var drives = CreateCard(24, 126, 572, 150, "Disk rows", "Pick up to three drives for the widget's disk rows. The first selected drive is shown first.");
+            _pnlDrives = new FlowLayoutPanel
+            {
+                Location = new Point(18, 58),
+                Size = new Size(536, 80),
+                AutoScroll = true,
+                BackColor = Color.Transparent,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false
+            };
+            drives.Controls.Add(_pnlDrives);
+            body.Controls.Add(drives);
+
+            var network = CreateCard(24, 288, 572, 126, "Network adapters to ignore", "Leave the defaults unless virtual adapters appear in the widget instead of your real Ethernet or Wi-Fi.");
+            _txtNetworkExclusions = new TextBox
+            {
+                Location = new Point(18, 58),
+                Size = new Size(536, 25),
+                BackColor = Color.FromArgb(38, 44, 50),
+                ForeColor = TextMain,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            var activeAdapters = new Label
+            {
+                Text = GetActiveAdapterSummary(),
+                Location = new Point(18, 90),
+                Size = new Size(536, 22),
+                ForeColor = AccentSoft,
+                Font = new Font("Segoe UI", 8.25f, FontStyle.Regular)
+            };
+            network.Controls.Add(_txtNetworkExclusions);
+            network.Controls.Add(activeAdapters);
+            body.Controls.Add(network);
+
+            var update = CreateCard(24, 426, 572, 84, "Updates and sensor refresh", "Background updates download the latest widget files from GitHub. Sensor refresh controls how often telemetry is written.");
+            _chkAutoUpdate = new CheckBox
+            {
+                Text = "Keep CodexMonitor updated automatically",
+                Location = new Point(18, 50),
+                Size = new Size(290, 25),
+                Checked = true,
+                ForeColor = TextMain
+            };
+            var rateLabel = new Label
+            {
+                Text = "Sensor refresh:",
+                Location = new Point(340, 53),
+                Size = new Size(100, 22),
+                ForeColor = TextMain
+            };
+            _cmbUpdateRate = new ComboBox
+            {
+                Location = new Point(446, 49),
+                Size = new Size(108, 25),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                BackColor = Color.FromArgb(38, 44, 50),
+                ForeColor = TextMain,
+                FlatStyle = FlatStyle.Flat
+            };
+            _cmbUpdateRate.Items.AddRange(new object[] { "1 second", "2 seconds", "3 seconds", "5 seconds", "10 seconds", "30 seconds" });
+            _cmbUpdateRate.SelectedIndex = 0;
+            update.Controls.Add(_chkAutoUpdate);
+            update.Controls.Add(rateLabel);
+            update.Controls.Add(_cmbUpdateRate);
+            body.Controls.Add(update);
+
+            var footer = new Panel
+            {
+                Location = new Point(0, 624),
+                Size = new Size(620, 66),
+                BackColor = Color.FromArgb(12, 16, 21)
+            };
+            footer.Paint += (s, e) =>
+            {
+                using var pen = new Pen(Border, 1);
+                e.Graphics.DrawLine(pen, 0, 0, 620, 0);
+            };
+            _lblApplyStatus = new Label
+            {
+                Text = "Changes are saved to your local config.json and applied to the running widget.",
+                Location = new Point(24, 22),
+                Size = new Size(330, 24),
+                ForeColor = TextMuted,
+                Font = new Font("Segoe UI", 8.4f, FontStyle.Regular)
+            };
+            _btnSave = new Button
+            {
+                Text = "Save and apply",
+                Size = new Size(132, 34),
+                Location = new Point(350, 16),
+                BackColor = Accent,
+                ForeColor = Color.FromArgb(6, 12, 16),
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI Semibold", 9.5f, FontStyle.Bold),
+                Cursor = Cursors.Hand
+            };
+            _btnSave.FlatAppearance.BorderSize = 0;
+            _btnSave.MouseEnter += (s, e) => _btnSave.BackColor = Color.FromArgb(58, 235, 250);
+            _btnSave.MouseLeave += (s, e) => _btnSave.BackColor = Accent;
+            _btnSave.Click += BtnSave_Click;
+
+            _btnCancel = new Button
+            {
+                Text = "Cancel",
+                Size = new Size(92, 34),
+                Location = new Point(500, 16),
+                BackColor = Color.FromArgb(43, 49, 56),
+                ForeColor = TextMain,
+                FlatStyle = FlatStyle.Flat,
+                Cursor = Cursors.Hand
+            };
+            _btnCancel.FlatAppearance.BorderColor = Border;
+            _btnCancel.Click += (s, e) => Close();
+            footer.Controls.Add(_lblApplyStatus);
+            footer.Controls.Add(_btnSave);
+            footer.Controls.Add(_btnCancel);
+            Controls.Add(footer);
+        }
+
+        private Panel CreateCard(int x, int y, int width, int height, string title, string description)
+        {
+            var panel = new Panel
+            {
+                Location = new Point(x, y),
+                Size = new Size(width, height),
+                BackColor = Card
+            };
+            panel.Paint += (s, e) =>
+            {
+                using var pen = new Pen(Border, 1);
+                e.Graphics.DrawRectangle(pen, 0, 0, width - 1, height - 1);
+            };
+            panel.Controls.Add(new Label
+            {
+                Text = title,
+                Location = new Point(18, 12),
+                AutoSize = true,
+                Font = new Font("Segoe UI Semibold", 10.2f, FontStyle.Bold),
+                ForeColor = Accent
+            });
+            panel.Controls.Add(new Label
+            {
+                Text = description,
+                Location = new Point(18, 34),
+                Size = new Size(width - 36, 20),
+                Font = new Font("Segoe UI", 8.35f, FontStyle.Regular),
+                ForeColor = TextMuted
+            });
+            return panel;
+        }
+
+        private RadioButton CreateRadio(string text, int x, int y, int width, bool isChecked)
+        {
+            return new RadioButton
+            {
+                Text = text,
+                Location = new Point(x, y),
+                Size = new Size(width, 26),
+                Checked = isChecked,
+                ForeColor = TextMain
+            };
+        }
+
+        private static string GetActiveAdapterSummary()
+        {
             try
             {
                 var names = NetworkInterface.GetAllNetworkInterfaces()
@@ -64,242 +283,18 @@ namespace CodexBridge
                                   nic.NetworkInterfaceType != NetworkInterfaceType.Loopback)
                     .Select(nic => nic.Name)
                     .Distinct()
+                    .Take(4)
                     .ToList();
-                if (names.Count > 0)
-                {
-                    activeAdapters = "Active: " + string.Join(", ", names);
-                }
+                return names.Count == 0 ? "Active adapters: none detected" : "Active adapters: " + string.Join(", ", names);
             }
-            catch { }
-
-            // Title Header Panel
-            Panel pnlHeader = new Panel
+            catch
             {
-                Location = new Point(0, 0),
-                Size = new Size(480, 65),
-                BackColor = Color.FromArgb(26, 26, 26)
-            };
-            pnlHeader.Paint += (s, e) => {
-                using var pen = new Pen(Color.FromArgb(0, 183, 195), 2);
-                e.Graphics.DrawLine(pen, 0, 63, 480, 63); // Bottom accent line
-            };
-            Label lblTitle = new Label
-            {
-                Text = "CodexMonitor Setup Wizard",
-                Font = new Font("Segoe UI Semibold", 14.25f, FontStyle.Bold),
-                Location = new Point(20, 18),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(0, 229, 255) // Vibrant accent
-            };
-            pnlHeader.Controls.Add(lblTitle);
-            this.Controls.Add(pnlHeader);
-
-            // Main Body Content Container
-            Panel pnlBody = new Panel
-            {
-                Location = new Point(0, 65),
-                Size = new Size(480, 515),
-                BackColor = Color.FromArgb(18, 18, 18)
-            };
-            this.Controls.Add(pnlBody);
-
-            // Card 1: Widget Size / Profile Mode
-            Panel cardProfile = CreateCard(20, 12, 440, 75);
-            Label lblProfileTitle = CreateCardTitle("1. Widget Size / Profile Mode", 15, 12);
-            _rdoAuto = new RadioButton
-            {
-                Text = "Auto (Detect)",
-                Location = new Point(15, 38),
-                Size = new Size(130, 25),
-                Checked = true
-            };
-            _rdo1080p = new RadioButton
-            {
-                Text = "1080p (Compact)",
-                Location = new Point(150, 38),
-                Size = new Size(140, 25)
-            };
-            _rdo4K = new RadioButton
-            {
-                Text = "4K (Large)",
-                Location = new Point(295, 38),
-                Size = new Size(110, 25)
-            };
-            cardProfile.Controls.Add(lblProfileTitle);
-            cardProfile.Controls.Add(_rdoAuto);
-            cardProfile.Controls.Add(_rdo1080p);
-            cardProfile.Controls.Add(_rdo4K);
-            pnlBody.Controls.Add(cardProfile);
-
-            // Card 2: Hard Drives Selection
-            Panel cardDrives = CreateCard(20, 97, 440, 150);
-            Label lblDrivesTitle = CreateCardTitle("2. Storage Drives to Display", 15, 12);
-            _pnlDrives = new FlowLayoutPanel
-            {
-                Location = new Point(15, 38),
-                Size = new Size(410, 102),
-                AutoScroll = true,
-                BackColor = Color.Transparent,
-                FlowDirection = FlowDirection.TopDown,
-                WrapContents = false
-            };
-            cardDrives.Controls.Add(lblDrivesTitle);
-            cardDrives.Controls.Add(_pnlDrives);
-            pnlBody.Controls.Add(cardDrives);
-
-            // Card 3: Network Exclusions
-            Panel cardNetwork = CreateCard(20, 257, 440, 125);
-            Label lblNetworkTitle = CreateCardTitle("3. Network Adapter Filters (Ignore list)", 15, 12);
-            _txtNetworkExclusions = new TextBox
-            {
-                Location = new Point(15, 36),
-                Size = new Size(410, 25),
-                BackColor = Color.FromArgb(45, 45, 45),
-                ForeColor = Color.White,
-                BorderStyle = BorderStyle.FixedSingle
-            };
-            Label lblActiveNetwork = new Label
-            {
-                Text = activeAdapters,
-                Font = new Font("Segoe UI", 8.0f, FontStyle.Regular),
-                Location = new Point(15, 66),
-                Size = new Size(410, 20),
-                ForeColor = Color.FromArgb(0, 183, 195)
-            };
-            Label lblNetworkHelp = new Label
-            {
-                Text = "Comma-separated terms to filter virtual switches or ignored cards.",
-                Font = new Font("Segoe UI", 8.0f, FontStyle.Italic),
-                Location = new Point(15, 88),
-                Size = new Size(410, 20),
-                ForeColor = Color.DarkGray
-            };
-            cardNetwork.Controls.Add(lblNetworkTitle);
-            cardNetwork.Controls.Add(_txtNetworkExclusions);
-            cardNetwork.Controls.Add(lblActiveNetwork);
-            cardNetwork.Controls.Add(lblNetworkHelp);
-            pnlBody.Controls.Add(cardNetwork);
-
-            // Card 4: Updates and Telemetry Rate
-            Panel cardAdvanced = CreateCard(20, 392, 440, 110);
-            Label lblAdvancedTitle = CreateCardTitle("4. Telemetry Update Rate and Updates", 15, 12);
-            _chkAutoUpdate = new CheckBox
-            {
-                Text = "Enable background automatic updates",
-                Location = new Point(15, 35),
-                Size = new Size(410, 25),
-                Checked = true
-            };
-            Label lblRate = new Label
-            {
-                Text = "Update interval:",
-                Location = new Point(15, 71),
-                Size = new Size(160, 25),
-                ForeColor = Color.White
-            };
-            _cmbUpdateRate = new ComboBox
-            {
-                Location = new Point(180, 68),
-                Size = new Size(120, 25),
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = Color.FromArgb(45, 45, 45),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat
-            };
-            _cmbUpdateRate.Items.AddRange(new object[] { "1 second", "2 seconds", "3 seconds", "5 seconds", "10 seconds", "30 seconds" });
-            _cmbUpdateRate.SelectedIndex = 0;
-            cardAdvanced.Controls.Add(lblAdvancedTitle);
-            cardAdvanced.Controls.Add(_chkAutoUpdate);
-            cardAdvanced.Controls.Add(lblRate);
-            cardAdvanced.Controls.Add(_cmbUpdateRate);
-            pnlBody.Controls.Add(cardAdvanced);
-
-            // Bottom Command Button Panel
-            Panel pnlBottom = new Panel
-            {
-                Location = new Point(0, 580),
-                Size = new Size(480, 60),
-                BackColor = Color.FromArgb(26, 26, 26)
-            };
-            pnlBottom.Paint += (s, e) => {
-                using var pen = new Pen(Color.FromArgb(45, 45, 45), 1);
-                e.Graphics.DrawLine(pen, 0, 0, 480, 0); // Top separator line
-            };
-            this.Controls.Add(pnlBottom);
-
-            _btnSave = new Button
-            {
-                Text = "Save settings",
-                Size = new Size(130, 32),
-                Location = new Point(180, 14),
-                BackColor = Color.FromArgb(0, 183, 195),
-                ForeColor = Color.Black,
-                FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI Semibold", 9.75f, FontStyle.Bold),
-                Cursor = Cursors.Hand
-            };
-            _btnSave.FlatAppearance.BorderSize = 0;
-            // Hover effect
-            _btnSave.MouseEnter += (s, e) => _btnSave.BackColor = Color.FromArgb(0, 229, 255);
-            _btnSave.MouseLeave += (s, e) => _btnSave.BackColor = Color.FromArgb(0, 183, 195);
-            _btnSave.Click += BtnSave_Click;
-
-            _btnCancel = new Button
-            {
-                Text = "Cancel",
-                Size = new Size(100, 32),
-                Location = new Point(330, 14),
-                BackColor = Color.FromArgb(50, 50, 50),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                Cursor = Cursors.Hand
-            };
-            _btnCancel.FlatAppearance.BorderSize = 1;
-            _btnCancel.FlatAppearance.BorderColor = Color.FromArgb(70, 70, 70);
-            _btnCancel.MouseEnter += (s, e) => {
-                _btnCancel.BackColor = Color.FromArgb(70, 70, 70);
-                _btnCancel.FlatAppearance.BorderColor = Color.FromArgb(90, 90, 90);
-            };
-            _btnCancel.MouseLeave += (s, e) => {
-                _btnCancel.BackColor = Color.FromArgb(50, 50, 50);
-                _btnCancel.FlatAppearance.BorderColor = Color.FromArgb(70, 70, 70);
-            };
-            _btnCancel.Click += (s, e) => this.Close();
-
-            pnlBottom.Controls.Add(_btnSave);
-            pnlBottom.Controls.Add(_btnCancel);
-        }
-
-        private Panel CreateCard(int x, int y, int width, int height)
-        {
-            var pnl = new Panel
-            {
-                Location = new Point(x, y),
-                Size = new Size(width, height),
-                BackColor = Color.FromArgb(24, 24, 24)
-            };
-            pnl.Paint += (s, e) => {
-                using var pen = new Pen(Color.FromArgb(48, 48, 48), 1);
-                e.Graphics.DrawRectangle(pen, 0, 0, width - 1, height - 1);
-            };
-            return pnl;
-        }
-
-        private Label CreateCardTitle(string title, int x, int y)
-        {
-            return new Label
-            {
-                Text = title,
-                Location = new Point(x, y),
-                Font = new Font("Segoe UI Semibold", 9.75f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(0, 183, 195),
-                AutoSize = true
-            };
+                return "Active adapters: unavailable";
+            }
         }
 
         private void LoadSettings()
         {
-            // Populate Drives Panel dynamically
             var availableDrives = DriveInfo.GetDrives()
                 .Where(d => d.DriveType == DriveType.Fixed || d.DriveType == DriveType.Removable)
                 .OrderBy(d => d.Name)
@@ -307,29 +302,28 @@ namespace CodexBridge
 
             foreach (var drive in availableDrives)
             {
-                string rawPrefix = drive.Name.Substring(0, 2); // e.g., "C:"
-                string infoText = rawPrefix;
+                var rawPrefix = drive.Name.Substring(0, 2);
+                var infoText = rawPrefix;
                 try
                 {
                     if (drive.IsReady)
                     {
-                        string label = string.IsNullOrEmpty(drive.VolumeLabel) ? "" : $" [{drive.VolumeLabel}]";
-                        double freeGb = drive.TotalFreeSpace / (1024.0 * 1024.0 * 1024.0);
-                        double totalGb = drive.TotalSize / (1024.0 * 1024.0 * 1024.0);
+                        var label = string.IsNullOrEmpty(drive.VolumeLabel) ? "" : $" [{drive.VolumeLabel}]";
+                        var freeGb = drive.TotalFreeSpace / (1024.0 * 1024.0 * 1024.0);
+                        var totalGb = drive.TotalSize / (1024.0 * 1024.0 * 1024.0);
                         infoText = $"{rawPrefix}{label} ({freeGb:F0} GB free of {totalGb:F0} GB)";
                     }
                 }
                 catch { }
 
-                var chk = new CheckBox
+                _pnlDrives.Controls.Add(new CheckBox
                 {
                     Text = infoText,
                     Tag = rawPrefix,
-                    Size = new Size(380, 25),
+                    Size = new Size(500, 25),
                     Margin = new Padding(0, 2, 0, 2),
-                    ForeColor = Color.White
-                };
-                _pnlDrives.Controls.Add(chk);
+                    ForeColor = TextMain
+                });
             }
 
             if (!File.Exists(_configPath))
@@ -339,32 +333,18 @@ namespace CodexBridge
 
             try
             {
-                var json = File.ReadAllText(_configPath);
-                using var document = JsonDocument.Parse(json);
+                using var document = JsonDocument.Parse(File.ReadAllText(_configPath));
                 var rootElement = document.RootElement;
 
-                // 1. Load Profile mode
-                if (rootElement.TryGetProperty("profiles", out var profiles) && profiles.ValueKind == JsonValueKind.Object)
+                if (rootElement.TryGetProperty("profiles", out var profiles) && profiles.ValueKind == JsonValueKind.Object &&
+                    profiles.TryGetProperty("default", out var def) && def.ValueKind == JsonValueKind.String)
                 {
-                    if (profiles.TryGetProperty("default", out var def) && def.ValueKind == JsonValueKind.String)
-                    {
-                        var mode = def.GetString();
-                        if (string.Equals(mode, "1080p", StringComparison.OrdinalIgnoreCase))
-                        {
-                            _rdo1080p.Checked = true;
-                        }
-                        else if (string.Equals(mode, "4K", StringComparison.OrdinalIgnoreCase))
-                        {
-                            _rdo4K.Checked = true;
-                        }
-                        else
-                        {
-                            _rdoAuto.Checked = true;
-                        }
-                    }
+                    var mode = def.GetString();
+                    _rdo1080p.Checked = string.Equals(mode, "1080p", StringComparison.OrdinalIgnoreCase);
+                    _rdo4K.Checked = string.Equals(mode, "4K", StringComparison.OrdinalIgnoreCase);
+                    _rdoAuto.Checked = !_rdo1080p.Checked && !_rdo4K.Checked;
                 }
 
-                // 2. Set drive checkboxes
                 if (rootElement.TryGetProperty("disks", out var disks) && disks.ValueKind == JsonValueKind.Array)
                 {
                     var configuredDrives = disks.EnumerateArray()
@@ -373,60 +353,44 @@ namespace CodexBridge
                         .ToList();
                     foreach (CheckBox chk in _pnlDrives.Controls)
                     {
-                        var tag = chk.Tag as string;
-                        if (tag != null)
+                        if (chk.Tag is string tag)
                         {
                             chk.Checked = configuredDrives.Contains(tag, StringComparer.OrdinalIgnoreCase);
                         }
                     }
                 }
 
-                // 3. Network ignore list
-                if (rootElement.TryGetProperty("network", out var network) && network.ValueKind == JsonValueKind.Object)
+                if (rootElement.TryGetProperty("network", out var network) && network.ValueKind == JsonValueKind.Object &&
+                    network.TryGetProperty("ignoreAdaptersContaining", out var ignore) && ignore.ValueKind == JsonValueKind.Array)
                 {
-                    if (network.TryGetProperty("ignoreAdaptersContaining", out var ignore) && ignore.ValueKind == JsonValueKind.Array)
-                    {
-                        var list = ignore.EnumerateArray().Select(x => x.GetString()!).ToList();
-                        _txtNetworkExclusions.Text = string.Join(", ", list);
-                    }
+                    _txtNetworkExclusions.Text = string.Join(", ", ignore.EnumerateArray().Select(x => x.GetString()!));
                 }
 
-                // 4. Update Rate
-                if (rootElement.TryGetProperty("bridge", out var bridge) && bridge.ValueKind == JsonValueKind.Object)
+                if (rootElement.TryGetProperty("bridge", out var bridge) && bridge.ValueKind == JsonValueKind.Object &&
+                    bridge.TryGetProperty("updateSeconds", out var seconds) && seconds.TryGetDouble(out var rate))
                 {
-                    if (bridge.TryGetProperty("updateSeconds", out var seconds) && seconds.TryGetDouble(out var rate))
+                    var rateSec = Math.Max(1, (int)rate);
+                    var targetText = rateSec == 1 ? "1 second" : $"{rateSec} seconds";
+                    var idx = _cmbUpdateRate.FindStringExact(targetText);
+                    if (idx < 0)
                     {
-                        int rateSec = Math.Max(1, (int)rate);
-                        string targetText = rateSec == 1 ? "1 second" : $"{rateSec} seconds";
-                        int idx = _cmbUpdateRate.FindStringExact(targetText);
-                        if (idx >= 0)
-                        {
-                            _cmbUpdateRate.SelectedIndex = idx;
-                        }
-                        else
-                        {
-                            _cmbUpdateRate.Items.Add(targetText);
-                            _cmbUpdateRate.SelectedIndex = _cmbUpdateRate.Items.Count - 1;
-                        }
+                        _cmbUpdateRate.Items.Add(targetText);
+                        idx = _cmbUpdateRate.Items.Count - 1;
                     }
+                    _cmbUpdateRate.SelectedIndex = idx;
                 }
 
-                // 5. Auto Updates
-                if (rootElement.TryGetProperty("display", out var display) && display.ValueKind == JsonValueKind.Object)
+                if (rootElement.TryGetProperty("display", out var display) && display.ValueKind == JsonValueKind.Object &&
+                    display.TryGetProperty("autoUpdate", out var autoUpdate) &&
+                    (autoUpdate.ValueKind == JsonValueKind.True || autoUpdate.ValueKind == JsonValueKind.False))
                 {
-                    if (display.TryGetProperty("autoUpdate", out var autoUpdate) && (autoUpdate.ValueKind == JsonValueKind.True || autoUpdate.ValueKind == JsonValueKind.False))
-                    {
-                        _chkAutoUpdate.Checked = autoUpdate.GetBoolean();
-                    }
+                    _chkAutoUpdate.Checked = autoUpdate.GetBoolean();
                 }
 
-                // 6. Rainmeter path
-                if (rootElement.TryGetProperty("rainmeter", out var rainmeter) && rainmeter.ValueKind == JsonValueKind.Object)
+                if (rootElement.TryGetProperty("rainmeter", out var rainmeter) && rainmeter.ValueKind == JsonValueKind.Object &&
+                    rainmeter.TryGetProperty("executable", out var executable) && executable.ValueKind == JsonValueKind.String)
                 {
-                    if (rainmeter.TryGetProperty("executable", out var executable) && executable.ValueKind == JsonValueKind.String)
-                    {
-                        _rainmeterExe = executable.GetString() ?? _rainmeterExe;
-                    }
+                    _rainmeterExe = executable.GetString() ?? _rainmeterExe;
                 }
             }
             catch (Exception ex)
@@ -437,119 +401,156 @@ namespace CodexBridge
 
         private void BtnSave_Click(object? sender, EventArgs e)
         {
+            _btnSave.Enabled = false;
+            _lblApplyStatus.Text = "Saving settings and applying them to the running widget...";
             try
             {
                 var configDict = new Dictionary<string, object>();
                 if (File.Exists(_configPath))
                 {
-                    var json = File.ReadAllText(_configPath);
-                    configDict = JsonSerializer.Deserialize<Dictionary<string, object>>(json) ?? configDict;
+                    configDict = JsonSerializer.Deserialize<Dictionary<string, object>>(File.ReadAllText(_configPath)) ?? configDict;
                 }
 
-                // Set profiles object
-                var profilesDict = new Dictionary<string, object>
-                {
-                    { "auto", _rdoAuto.Checked }
-                };
                 var mode = "Auto";
                 if (_rdo1080p.Checked) mode = "1080p";
                 else if (_rdo4K.Checked) mode = "4K";
-                profilesDict.Add("default", mode);
-                profilesDict.Add("compact", "1080p");
-                profilesDict.Add("large", "4K");
-                configDict["profiles"] = profilesDict;
+                configDict["profiles"] = new Dictionary<string, object>
+                {
+                    { "auto", _rdoAuto.Checked },
+                    { "default", mode },
+                    { "compact", "1080p" },
+                    { "large", "4K" }
+                };
 
-                // Set disks array
                 var selectedDrives = new List<string>();
                 foreach (CheckBox chk in _pnlDrives.Controls)
                 {
                     if (chk.Checked && chk.Tag is string driveTag)
                     {
-                        selectedDrives.Add(driveTag + "\\");
+                        selectedDrives.Add(driveTag);
                     }
                 }
                 if (selectedDrives.Count == 0)
                 {
-                    selectedDrives.Add("C:\\"); // Fallback
+                    throw new InvalidOperationException("Select at least one drive for the widget disk rows.");
+                }
+                if (selectedDrives.Count > 3)
+                {
+                    throw new InvalidOperationException("Select no more than three drives. The widget has three disk rows.");
                 }
                 configDict["disks"] = selectedDrives;
 
-                // Set network object
-                var networkDict = new Dictionary<string, object>();
-                if (configDict.ContainsKey("network") && configDict["network"] is JsonElement netElement && netElement.ValueKind == JsonValueKind.Object)
-                {
-                    networkDict = JsonSerializer.Deserialize<Dictionary<string, object>>(netElement.GetRawText()) ?? networkDict;
-                }
-                var ignoreList = _txtNetworkExclusions.Text.Split(',')
-                    .Select(x => x.Trim().ToLower())
+                var networkDict = ReadObject(configDict, "network");
+                networkDict["ignoreAdaptersContaining"] = _txtNetworkExclusions.Text.Split(',')
+                    .Select(x => x.Trim().ToLowerInvariant())
                     .Where(x => !string.IsNullOrEmpty(x))
                     .ToList();
-                networkDict["ignoreAdaptersContaining"] = ignoreList;
                 configDict["network"] = networkDict;
 
-                // Set display object
-                var displayDict = new Dictionary<string, object>();
-                if (configDict.ContainsKey("display") && configDict["display"] is JsonElement dispElement && dispElement.ValueKind == JsonValueKind.Object)
-                {
-                    displayDict = JsonSerializer.Deserialize<Dictionary<string, object>>(dispElement.GetRawText()) ?? displayDict;
-                }
+                var displayDict = ReadObject(configDict, "display");
                 displayDict["autoUpdate"] = _chkAutoUpdate.Checked;
                 configDict["display"] = displayDict;
 
-                // Set bridge object
-                var bridgeDict = new Dictionary<string, object>();
-                if (configDict.ContainsKey("bridge") && configDict["bridge"] is JsonElement briElement && briElement.ValueKind == JsonValueKind.Object)
-                {
-                    bridgeDict = JsonSerializer.Deserialize<Dictionary<string, object>>(briElement.GetRawText()) ?? bridgeDict;
-                }
-
-                int rateSeconds = 1;
-                if (_cmbUpdateRate.SelectedItem != null)
-                {
-                    string selectedText = _cmbUpdateRate.SelectedItem.ToString() ?? "";
-                    var match = System.Text.RegularExpressions.Regex.Match(selectedText, @"\d+");
-                    if (match.Success && int.TryParse(match.Value, out int parsedRate))
-                    {
-                        rateSeconds = parsedRate;
-                    }
-                }
-                bridgeDict["updateSeconds"] = rateSeconds;
+                var bridgeDict = ReadObject(configDict, "bridge");
+                bridgeDict["updateSeconds"] = GetSelectedRefreshSeconds();
                 configDict["bridge"] = bridgeDict;
 
-                // Save back with UTF-8 encoding
-                var serializeOptions = new JsonSerializerOptions { WriteIndented = true };
-                var updatedJson = JsonSerializer.Serialize(configDict, serializeOptions);
+                var updatedJson = JsonSerializer.Serialize(configDict, new JsonSerializerOptions { WriteIndented = true });
                 File.WriteAllText(_configPath, updatedJson, System.Text.Encoding.UTF8);
 
-                // Run Switch-WidgetSize.ps1
-                var switcherScript = Path.Combine(_installRoot, @"Deploy\Switch-WidgetSize.ps1");
-                if (File.Exists(switcherScript))
-                {
-                    var psi = new ProcessStartInfo
-                    {
-                        FileName = "powershell.exe",
-                        Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{switcherScript}\" -Mode {mode} -InstallRoot \"{_installRoot}\" -ConfigPath \"{_configPath}\"",
-                        CreateNoWindow = true,
-                        UseShellExecute = false
-                    };
-                    using var proc = Process.Start(psi);
-                    proc?.WaitForExit(3000);
-                }
+                ApplyWidgetChanges(mode, GetBridgeTaskName(bridgeDict));
 
-                // Refresh Rainmeter Config
-                if (File.Exists(_rainmeterExe))
-                {
-                    Process.Start(_rainmeterExe, "!Refresh CodexMonitor");
-                }
-
-                MessageBox.Show("Configuration updated and widget size profile applied successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                this.DialogResult = DialogResult.OK;
-                this.Close();
+                _lblApplyStatus.Text = "Saved. The widget was refreshed and the hardware bridge was restarted.";
+                MessageBox.Show("Settings saved and applied to the running widget.", "CodexMonitor Settings", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                DialogResult = DialogResult.OK;
+                Close();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to save settings: {ex.Message}", "Error Saving Settings", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                _btnSave.Enabled = true;
+                _lblApplyStatus.Text = "Save failed. No further changes were applied.";
+                MessageBox.Show($"Failed to save settings: {ex.Message}", "CodexMonitor Settings", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+        }
+
+        private static Dictionary<string, object> ReadObject(Dictionary<string, object> config, string key)
+        {
+            if (config.TryGetValue(key, out var existing) && existing is JsonElement element && element.ValueKind == JsonValueKind.Object)
+            {
+                return JsonSerializer.Deserialize<Dictionary<string, object>>(element.GetRawText()) ?? new Dictionary<string, object>();
+            }
+            if (existing is Dictionary<string, object> typed)
+            {
+                return typed;
+            }
+            return new Dictionary<string, object>();
+        }
+
+        private int GetSelectedRefreshSeconds()
+        {
+            var selectedText = _cmbUpdateRate.SelectedItem?.ToString() ?? "1 second";
+            var match = System.Text.RegularExpressions.Regex.Match(selectedText, @"\d+");
+            return match.Success && int.TryParse(match.Value, out var parsedRate) ? parsedRate : 1;
+        }
+
+        private static string GetBridgeTaskName(Dictionary<string, object> bridgeConfig)
+        {
+            if (bridgeConfig.TryGetValue("taskName", out var taskNameValue))
+            {
+                if (taskNameValue is string taskName && !string.IsNullOrWhiteSpace(taskName))
+                {
+                    return taskName;
+                }
+                if (taskNameValue is JsonElement element && element.ValueKind == JsonValueKind.String)
+                {
+                    return element.GetString() ?? "CodexMonitor Bridge Elevated";
+                }
+            }
+            return "CodexMonitor Bridge Elevated";
+        }
+
+        private void ApplyWidgetChanges(string mode, string taskName)
+        {
+            var switcherScript = Path.Combine(_installRoot, @"Deploy\Switch-WidgetSize.ps1");
+            if (File.Exists(switcherScript))
+            {
+                using var proc = Process.Start(new ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = $"-NoProfile -ExecutionPolicy Bypass -File \"{switcherScript}\" -Mode {mode} -InstallRoot \"{_installRoot}\" -ConfigPath \"{_configPath}\"",
+                    CreateNoWindow = true,
+                    UseShellExecute = false
+                });
+                proc?.WaitForExit(8000);
+            }
+
+            RestartBridgeTask(taskName);
+
+            if (File.Exists(_rainmeterExe))
+            {
+                Process.Start(_rainmeterExe, "!Refresh CodexMonitor");
+            }
+        }
+
+        private void RestartBridgeTask(string taskName)
+        {
+            using var stop = Process.Start(new ProcessStartInfo
+            {
+                FileName = "schtasks.exe",
+                Arguments = $"/end /tn \"{taskName}\"",
+                CreateNoWindow = true,
+                UseShellExecute = false
+            });
+            stop?.WaitForExit(5000);
+
+            using var start = Process.Start(new ProcessStartInfo
+            {
+                FileName = "schtasks.exe",
+                Arguments = $"/run /tn \"{taskName}\"",
+                CreateNoWindow = true,
+                UseShellExecute = false
+            });
+            start?.WaitForExit(5000);
         }
     }
 }
