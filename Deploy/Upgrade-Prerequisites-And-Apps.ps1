@@ -43,17 +43,15 @@ if (-not (Test-Command "winget")) {
 }
 
 # 1. Stop active processes to prevent file locking
-Write-Host "Stopping CodexBridge, Rainmeter, and optional FanControl if running..." -ForegroundColor Yellow
+Write-Host "Stopping CodexBridge and Rainmeter if running..." -ForegroundColor Yellow
 
 # Track if they were running so we can restart them
 $wasRainmeterRunning = [bool](Get-Process Rainmeter -ErrorAction SilentlyContinue)
-$wasFanControlRunning = [bool](Get-Process FanControl -ErrorAction SilentlyContinue)
 
 # Stop bridge task and processes
 Get-ScheduledTask -TaskName "CodexMonitor Bridge Elevated" -ErrorAction SilentlyContinue | Stop-ScheduledTask -ErrorAction SilentlyContinue
 Stop-Process -Name "CodexBridge" -Force -ErrorAction SilentlyContinue
 Stop-Process -Name "Rainmeter" -Force -ErrorAction SilentlyContinue
-Stop-Process -Name "FanControl" -Force -ErrorAction SilentlyContinue
 
 # Terminate startup watcher if running
 Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
@@ -83,27 +81,11 @@ function Upgrade-App {
 
 Upgrade-App -Id "Git.Git" -Name "Git"
 Upgrade-App -Id "Rainmeter.Rainmeter" -Name "Rainmeter"
-if ($wasFanControlRunning) {
-    Upgrade-App -Id "Rem0o.FanControl" -Name "FanControl"
-}
 Upgrade-App -Id "Microsoft.DotNet.SDK.10" -Name ".NET 10 SDK"
 
 # 3. Restart processes
 Write-Host ""
 Write-Host "Restarting applications..." -ForegroundColor Green
-
-# Restart FanControl
-if ($wasFanControlRunning) {
-    $fanControlPaths = @(
-        "C:\Program Files (x86)\FanControl\FanControl.exe",
-        "$env:LOCALAPPDATA\FanControl\FanControl.exe"
-    )
-    $fanControlExe = $fanControlPaths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-    if ($fanControlExe) {
-        Start-Process -FilePath $fanControlExe
-        Write-Host "Started FanControl." -ForegroundColor Green
-    }
-}
 
 # Restart Bridge Scheduled Task
 schtasks.exe /run /tn "CodexMonitor Bridge Elevated" | Out-Null

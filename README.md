@@ -33,7 +33,7 @@ The widget is intentionally configured as part of the desktop, not as an always-
 - Rainmeter 4.5.x or newer.
 - .NET 10 SDK when installing directly from source, because `CodexBridge.exe` is built locally.
 - NVIDIA driver with `nvidia-smi.exe` available.
-- Optional: FanControl, if you use it to manage fan curves. The widget no longer needs FanControl as its sensor source.
+- The widget is display-only. Fan behavior is left to the user's BIOS/UEFI, drivers, or existing system tools.
 
 ## Configuration
 
@@ -126,7 +126,7 @@ Start-ScheduledTask -TaskName "CodexMonitor Bridge Elevated"
 
 ## Upgrading Prerequisites
 
-The background display watcher checks for available updates to core third-party dependencies (Rainmeter, Git, the .NET SDK, and optional FanControl if installed) once every 24 hours. If any updates are found, a Windows GUI prompt will appear. Clicking **Yes** will automatically perform the updates safely (closing applications to prevent file locks, running `winget` silently, and restarting everything cleanly).
+The background display watcher checks for available updates to core third-party dependencies (Rainmeter, Git, and the .NET SDK) once every 24 hours. If any updates are found, a Windows GUI prompt will appear. Clicking **Yes** will automatically perform the updates safely (closing applications to prevent file locks, running `winget` silently, and restarting everything cleanly).
 
 You can also trigger this update manually at any time by running:
 

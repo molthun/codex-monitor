@@ -152,9 +152,6 @@ function Check-ForPrerequisiteUpdates {
 
     try {
         $packageIds = @("Rainmeter.Rainmeter", "Microsoft.DotNet.SDK.10", "Git.Git")
-        if (Get-Process FanControl -ErrorAction SilentlyContinue) {
-            $packageIds += "Rem0o.FanControl"
-        }
         $foundUpdates = @()
 
         $output = winget list --upgrade-available 2>$null

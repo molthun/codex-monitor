@@ -18,7 +18,7 @@ This document provides a systematic analysis of CodexMonitor's current third-par
 * **Alternatives**:
   * **Direct Hardware Reading via C#**: We can reference the open-source **LibreHardwareMonitorLib** directly inside the C# bridge project. This library can read CPU, GPU, RAM, Disk, and Motherboard Super I/O sensors directly.
 * **Simplification Effort**: **Medium** (requires adding LibreHardwareMonitorLib and writing code to initialize and query the hardware sensors inside the bridge).
-* **Stability Impact**: **Very High**. FanControl is no longer required as the widget's sensor source. It remains useful as an optional companion app for users who want active fan-curve control.
+* **Stability Impact**: **Very High**. FanControl is no longer required as the widget's sensor source. CodexMonitor is display-only and leaves fan behavior to the user's BIOS/UEFI, drivers, or existing system tools.
 
 ---
 
@@ -46,5 +46,5 @@ This document provides a systematic analysis of CodexMonitor's current third-par
 | :--- | :--- | :--- | :--- |
 | **.NET 10 SDK/Runtime** | Code compilation & execution | **Native AOT (Self-Contained Executable)**: Distribute the compiled `.exe` directly. Eliminates .NET install requirement. | **Low** |
 | **Git** | Code pulls & updates | **ZIP Archive Release API**: Download latest ZIPs from GitHub instead of running `git pull`. Eliminates Git client requirement. | **Medium** |
-| **LibreHardwareMonitorLib** | CPU/GPU/Fan RPM data | **Current path**: query hardware directly in `CodexBridge`. FanControl remains optional for fan-curve control. | **Done** |
+| **LibreHardwareMonitorLib** | CPU/GPU/Fan RPM data | **Current path**: query hardware directly in `CodexBridge`. CodexMonitor displays current state only. | **Done** |
 | **Rainmeter** | Render widget panels | **WPF / WinUI Custom App**: Rebuild the UI as a native C# borderless app. Eliminates Rainmeter requirement. | **High** |

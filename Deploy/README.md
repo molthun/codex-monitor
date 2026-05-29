@@ -19,9 +19,9 @@ Install these first:
 1. Rainmeter 4.5.x or newer.
 2. NVIDIA driver with `nvidia-smi.exe` if NVIDIA GPU fallback data is desired.
 3. .NET 10 Desktop Runtime if the bridge does not start.
-4. Optional: FanControl if you use it to manage fan curves.
+4. Fan behavior is managed outside CodexMonitor by the user's BIOS/UEFI, drivers, or existing system tools.
 
-The bridge reads CPU/GPU/fan values directly through LibreHardwareMonitor. FanControl does not need to run for CodexMonitor sensor display.
+The bridge reads CPU/GPU/fan values directly through LibreHardwareMonitor. CodexMonitor displays current state only and does not control fan behavior.
 
 ## Restore
 

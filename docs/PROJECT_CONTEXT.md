@@ -51,7 +51,7 @@ This project targets Windows + Rainmeter + LibreHardwareMonitor:
 - Rainmeter 4.5.x or newer.
 - .NET 10 SDK/runtime for source-based install and bridge execution.
 - NVIDIA driver with `nvidia-smi.exe` if NVIDIA GPU fallback data is desired.
-- Optional: FanControl if the user wants to manage fan curves separately from CodexMonitor.
+- CodexMonitor is display-only. Fan behavior remains under the user's BIOS/UEFI, drivers, or existing system tools.
 
 Hardware sensor availability depends on the motherboard, firmware, drivers, Windows security settings, and LibreHardwareMonitor support. Keep exact local sensor mapping in `docs\LOCAL_SETUP.md`.
 

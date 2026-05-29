@@ -74,7 +74,7 @@ if (-not $hasSdk10) {
 }
 
 Write-Host ""
-Write-Host "CodexMonitor reads hardware sensors directly through LibreHardwareMonitor. FanControl is optional and only needed if you use it to manage fan curves." -ForegroundColor Green
+Write-Host "CodexMonitor reads hardware sensors directly through LibreHardwareMonitor and does not control fan behavior." -ForegroundColor Green
 
 # Run the Configuration Wizard
 $wizardScript = Join-Path $PSScriptRoot "Configure-CodexMonitor.ps1"

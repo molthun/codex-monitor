@@ -42,7 +42,7 @@ if (-not $SkipDotNet) {
 }
 
 Write-Host ""
-Write-Host "FanControl is optional. CodexMonitor reads sensor telemetry directly through LibreHardwareMonitor."
+Write-Host "CodexMonitor reads sensor telemetry directly through LibreHardwareMonitor and does not control fan behavior."
 
 $restoreScript = Join-Path $PSScriptRoot "Install-CodexMonitor.ps1"
 Write-Host ""
