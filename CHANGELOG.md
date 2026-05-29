@@ -2,6 +2,7 @@
 
 ## 2026-05-29
 
+- Made background Git auto-update failures visible to users with Windows notifications instead of silently swallowing failed fetch, pull, build, copy, task restart, or Rainmeter refresh steps.
 - Created a dependency upgrade helper script `Deploy/Upgrade-Prerequisites-And-Apps.ps1` to stop active services safely, perform `winget` upgrades, and restore executing widgets. Added an `-Auto` switch to close the console automatically when done.
 - Added daily winget upgrade checks in `Watch-PrimaryDisplay.ps1` that display an interactive GUI prompt to automatically run updates without manual terminal commands.
 - Created a GitHub bootstrap script `Deploy/Bootstrap-CodexMonitor.ps1` to clone the repository and run the setup cleanly from GitHub using a single PowerShell one-liner.

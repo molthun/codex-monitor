@@ -43,6 +43,35 @@ function Show-Notification {
     }
 }
 
+function Format-CommandOutput {
+    param([object[]]$Output)
+
+    $message = (($Output | Where-Object { $_ -ne $null }) -join "`n").Trim()
+    if ($message.Length -gt 420) { return $message.Substring(0, 420) + "..." }
+    if ($message) { return $message }
+    return "No command output was returned."
+}
+
+function Invoke-CheckedCommand {
+    param(
+        [scriptblock]$Command,
+        [string]$Description
+    )
+
+    $output = & $Command 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "$Description failed with exit code $LASTEXITCODE. $(Format-CommandOutput -Output $output)"
+    }
+
+    return $output
+}
+
+function Show-UpdateFailure {
+    param([string]$Message)
+
+    Show-Notification "CodexMonitor Update Failed" $Message
+}
+
 function Check-ForUpdates {
     if ($config.display.autoUpdate -eq $false) { return }
 
@@ -51,58 +80,68 @@ function Check-ForUpdates {
     if (-not (Test-Command "git")) { return }
 
     try {
-        # Fetch remote updates
-        $null = git -C $InstallRoot fetch origin 2>&1
-        $local = (git -C $InstallRoot rev-parse HEAD).Trim()
-        $remote = (git -C $InstallRoot rev-parse origin/main).Trim()
+        Invoke-CheckedCommand -Description "Git fetch" -Command { git -C $InstallRoot fetch origin }
+        $local = (Invoke-CheckedCommand -Description "Read local revision" -Command { git -C $InstallRoot rev-parse HEAD } | Select-Object -First 1).Trim()
+        $remote = (Invoke-CheckedCommand -Description "Read remote revision" -Command { git -C $InstallRoot rev-parse origin/main } | Select-Object -First 1).Trim()
 
         if ($local -ne $remote) {
             Write-Host "New version found. Pulling updates..."
             Show-Notification "CodexMonitor Update" "Installing the latest updates from GitHub..."
 
-            # Pull changes
-            $null = git -C $InstallRoot pull origin main 2>&1
+            Invoke-CheckedCommand -Description "Git pull" -Command { git -C $InstallRoot pull origin main }
 
             # Stop the elevated bridge task if running to allow file updates
             Stop-Process -Name "CodexBridge" -Force -ErrorAction SilentlyContinue
 
             # Rebuild the bridge
             if (Test-Command "dotnet") {
-                & dotnet build (Join-Path $InstallRoot "CodexBridge\CodexBridge.csproj") -c Release | Out-Null
+                Invoke-CheckedCommand -Description "CodexBridge build" -Command { dotnet build (Join-Path $InstallRoot "CodexBridge\CodexBridge.csproj") -c Release }
+            }
+            else {
+                throw "The .NET SDK is not available, so CodexBridge could not be rebuilt."
             }
 
             # Copy updated presets/payload to the active Rainmeter skin target
             $skinPath = Get-RainmeterSkinPath
             $skinTarget = Join-Path $skinPath "CodexMonitor"
-            if (Test-Path -LiteralPath $skinTarget) {
-                $payloadIcons = Join-Path $InstallRoot "Deploy\Payload\@Resources\Icons"
-                $targetIcons = Join-Path $skinTarget "@Resources\Icons"
-                if (Test-Path -LiteralPath $payloadIcons) {
-                    New-Item -ItemType Directory -Force -Path $targetIcons | Out-Null
-                    Copy-Item -LiteralPath "$payloadIcons\*" -Destination $targetIcons -Force
-                }
-                
-                $mode = Get-AutoProfileMode -ScreenHeight [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height
-                $preset = Get-PresetPath -Mode $mode
-                if ($preset) {
-                    Copy-Item -LiteralPath $preset -Destination (Join-Path $skinTarget "CodexMonitor.ini") -Force
-                }
+            if (-not (Test-Path -LiteralPath $skinTarget)) {
+                throw "Rainmeter skin target was not found: $skinTarget"
             }
 
+            $payloadIcons = Join-Path $InstallRoot "Deploy\Payload\@Resources\Icons"
+            $targetIcons = Join-Path $skinTarget "@Resources\Icons"
+            if (Test-Path -LiteralPath $payloadIcons) {
+                New-Item -ItemType Directory -Force -Path $targetIcons | Out-Null
+                Copy-Item -LiteralPath "$payloadIcons\*" -Destination $targetIcons -Force
+            }
+
+            $mode = Get-AutoProfileMode -ScreenHeight [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height
+            $preset = Get-PresetPath -Mode $mode
+            if (-not $preset) {
+                throw "Could not find a Rainmeter preset for mode $mode."
+            }
+            Copy-Item -LiteralPath $preset -Destination (Join-Path $skinTarget "CodexMonitor.ini") -Force
+
             # Restart the elevated bridge task
-            schtasks.exe /run /tn "CodexMonitor Bridge Elevated" | Out-Null
+            Invoke-CheckedCommand -Description "Restart CodexBridge scheduled task" -Command { schtasks.exe /run /tn "CodexMonitor Bridge Elevated" }
 
             # Refresh Rainmeter
             $rainmeterExe = if ($config.rainmeter.executable) { $config.rainmeter.executable } else { "C:\Program Files\Rainmeter\Rainmeter.exe" }
             if (Test-Path -LiteralPath $rainmeterExe) {
                 & $rainmeterExe !Refresh "CodexMonitor"
+                if ($LASTEXITCODE -ne 0) { throw "Rainmeter refresh failed with exit code $LASTEXITCODE." }
+            }
+            else {
+                throw "Rainmeter executable was not found: $rainmeterExe"
             }
 
             Show-Notification "CodexMonitor Updated" "Widget has been updated to the latest version successfully!"
         }
     }
     catch {
-        # Log failure
+        $reason = $_.Exception.Message
+        Write-Host "CodexMonitor update failed: $reason"
+        Show-UpdateFailure "Automatic update did not complete. $reason"
     }
 }
 
