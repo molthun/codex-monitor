@@ -133,7 +133,7 @@ namespace CodexBridge
             {
                 Location = new Point(18, 60),
                 Size = new Size(668, 82),
-                AutoScroll = true,
+                AutoScroll = false,
                 BackColor = Color.Transparent,
                 FlowDirection = FlowDirection.TopDown,
                 WrapContents = false,
@@ -147,7 +147,7 @@ namespace CodexBridge
             {
                 Location = new Point(18, 60),
                 Size = new Size(668, 144),
-                AutoScroll = true,
+                AutoScroll = false,
                 BackColor = Color.Transparent,
                 FlowDirection = FlowDirection.TopDown,
                 WrapContents = false,
@@ -335,6 +335,7 @@ namespace CodexBridge
                     ForeColor = TextMain
                 });
             }
+            _pnlDrives.AutoScroll = availableDrives.Count > 3;
 
             PopulateNetworkAdapters();
 
@@ -575,8 +576,11 @@ namespace CodexBridge
                     Size = new Size(610, 28),
                     ForeColor = TextMuted
                 });
+                _pnlNetworkAdapters.AutoScroll = false;
                 return;
             }
+
+            _pnlNetworkAdapters.AutoScroll = adapters.Count > 3;
 
             foreach (var adapter in adapters)
             {
