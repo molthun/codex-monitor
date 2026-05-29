@@ -2,6 +2,7 @@
 
 ## 2026-05-29
 
+- Replaced missing SVG icon references with built-in Rainmeter shape icons and spaced 4K drive bars away from drive labels.
 - Stopped the size switcher from rewriting tracked `CodexMonitor.ini` during runtime profile changes.
 - Refactored CodexBridge and Rainmeter setup to fix hardcoded paths, hardware-specific dependencies, and configuration mismatches:
   - Translated all hardcoded absolute paths `file://C:/CodexMonitor/@Resources/temps.txt` to the relative `#@#temps.txt` path in all `.ini` skins and size presets.
