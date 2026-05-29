@@ -47,6 +47,8 @@ namespace CodexBridge
             "wan miniport",
             "teredo tunneling",
             "pseudo-interface",
+            "native wifi filter driver",
+            "virtual wifi filter driver",
             "vswitch",
             "vethernet",
             "hyper-v virtual"

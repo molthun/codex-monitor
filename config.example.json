@@ -53,6 +53,8 @@
       "wfp native mac layer",
       "wfp 802.3 mac layer",
       "lightweight filter",
+      "native wifi filter driver",
+      "virtual wifi filter driver",
       "pseudo-interface",
       "vswitch",
       "vethernet",
@@ -60,12 +62,15 @@
     ],
     "wifiApNamesContaining": [
       "wi-fi direct",
-      "wifi direct"
+      "wifi direct",
+      "hotspot"
     ],
     "wifiNamesContaining": [
       "wi-fi",
       "wifi",
-      "wireless"
+      "wireless",
+      "wlan",
+      "беспровод"
     ],
     "ethernetNamesContaining": [
       "ethernet",
