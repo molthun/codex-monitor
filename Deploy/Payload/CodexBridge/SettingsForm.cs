@@ -60,7 +60,7 @@ namespace CodexBridge
             try
             {
                 var names = NetworkInterface.GetAllNetworkInterfaces()
-                    .Where(nic => nic.OperationalStatus == OperationalStatus.Up && 
+                    .Where(nic => nic.OperationalStatus == OperationalStatus.Up &&
                                   nic.NetworkInterfaceType != NetworkInterfaceType.Loopback)
                     .Select(nic => nic.Name)
                     .Distinct()

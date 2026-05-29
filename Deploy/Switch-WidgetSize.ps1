@@ -139,9 +139,11 @@ Copy-Item -LiteralPath $preset -Destination $skinTarget -Force
 $lines = [System.Collections.Generic.List[string]]::new()
 foreach ($line in (Get-Content -LiteralPath $skinTarget)) { $lines.Add($line) }
 $bridgeExePath = Join-Path $InstallRoot "CodexBridge\CodexBridge.exe"
-Set-IniKey -Lines $lines -Section "Variables" -Key "BridgeExe" -Value "`"$bridgeExePath`""
+$settingsConfigPath = if ($ConfigPath) { $ConfigPath } else { Join-Path $InstallRoot "config.json" }
+Set-IniKey -Lines $lines -Section "Variables" -Key "BridgeExe" -Value $bridgeExePath
+Set-IniKey -Lines $lines -Section "Variables" -Key "ConfigPath" -Value $settingsConfigPath
 Set-IniKey -Lines $lines -Section "Rainmeter" -Key "ContextTitle" -Value "Configure CodexMonitor"
-Set-IniKey -Lines $lines -Section "Rainmeter" -Key "ContextAction" -Value "[`"#BridgeExe#`" --settings]"
+Set-IniKey -Lines $lines -Section "Rainmeter" -Key "ContextAction" -Value "[`"#BridgeExe#`" --settings --config `"#ConfigPath#`"]"
 Set-Content -LiteralPath $skinTarget -Value $lines -Encoding UTF8
 
 $position = Set-PrimaryMonitorPosition -SkinIni $skinTarget
