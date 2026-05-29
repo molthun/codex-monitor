@@ -125,6 +125,16 @@ Start-ScheduledTask -TaskName "CodexMonitor Bridge Elevated"
 & "C:\Program Files\Rainmeter\Rainmeter.exe" !Refresh "CodexMonitor"
 ```
 
+## Upgrading Prerequisites
+
+To upgrade third-party dependencies (Rainmeter, FanControl, Git, and the .NET SDK) safely without layout crashes or file lock errors, run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\CodexMonitor\Deploy\Upgrade-Prerequisites-And-Apps.ps1"
+```
+
+The background display watcher checks for available updates once every 24 hours. If upgrades are found, a Windows balloon tip will notify you that they are available.
+
 ## Current Size Profiles
 
 - 1080p: about `430 x 950`.

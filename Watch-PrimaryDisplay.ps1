@@ -106,6 +106,34 @@ function Check-ForUpdates {
     }
 }
 
+function Check-ForPrerequisiteUpdates {
+    if (-not (Test-Command "winget")) { return }
+
+    try {
+        $packageIds = @("Rem0o.FanControl", "Rainmeter.Rainmeter", "Microsoft.DotNet.SDK.10", "Git.Git")
+        $foundUpdates = @()
+
+        $output = winget list --upgrade-available 2>$null
+        if ($output) {
+            foreach ($id in $packageIds) {
+                if ($output | Select-String -Pattern $id) {
+                    $foundUpdates += $id
+                }
+            }
+        }
+
+        if ($foundUpdates.Count -gt 0) {
+            $apps = $foundUpdates | ForEach-Object { $_.Split(".")[-1] }
+            $appsList = $apps -join ", "
+            Show-Notification "CodexMonitor Dependency Updates" "New updates available for: $appsList. Run Deploy\Upgrade-Prerequisites-And-Apps.ps1 to upgrade safely."
+        }
+    }
+    catch {
+        # Ignore errors
+    }
+}
+
+
 function Get-RainmeterSkinPath {
     if ($config.rainmeter.skinPath) { return $config.rainmeter.skinPath }
     $rainmeterIni = Join-Path $env:APPDATA "Rainmeter\Rainmeter.ini"
@@ -290,12 +318,18 @@ function Move-WidgetToPrimary {
 
 $lastSignature = ""
 $lastUpdateCheck = [System.DateTime]::MinValue
+$lastPrereqCheck = [System.DateTime]::MinValue
 
 while ($true) {
     try {
         if ((Get-Date) -gt $lastUpdateCheck.AddHours(6)) {
             Check-ForUpdates
             $lastUpdateCheck = Get-Date
+        }
+
+        if ((Get-Date) -gt $lastPrereqCheck.AddDays(1)) {
+            Check-ForPrerequisiteUpdates
+            $lastPrereqCheck = Get-Date
         }
 
         Add-Type -AssemblyName System.Windows.Forms
