@@ -144,7 +144,7 @@ Modes:
 - `1080p`: force compact profile;
 - `4K`: force larger profile.
 
-The switcher copies the chosen preset into the active Rainmeter skin path and into `C:\CodexMonitor\CodexMonitor.ini`, then refreshes and moves Rainmeter.
+The switcher copies the chosen preset into the active Rainmeter skin path, then refreshes and moves Rainmeter. It does not rewrite the repository's root `CodexMonitor.ini`, so switching runtime size does not dirty the Git checkout.
 
 ### Installer
 

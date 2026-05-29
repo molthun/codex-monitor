@@ -68,7 +68,7 @@ C:\CodexMonitor\Presets\CodexMonitor.1080p.ini
 C:\CodexMonitor\Presets\CodexMonitor.4K.ini
 ```
 
-If editing visual layout, usually edit the appropriate preset first, then apply it:
+If editing visual layout, usually edit the appropriate preset first, then apply it. The size switcher updates the active Rainmeter skin only; it should not be used to update the tracked root `CodexMonitor.ini`.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File "C:\CodexMonitor\Deploy\Switch-WidgetSize.ps1" -Mode 4K

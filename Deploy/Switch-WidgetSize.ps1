@@ -132,12 +132,8 @@ if (-not $preset) {
 
 $skinPath = Get-RainmeterSkinPath
 $skinTarget = Join-Path $skinPath "CodexMonitor\CodexMonitor.ini"
-$workTarget = Join-Path $InstallRoot "CodexMonitor.ini"
 
 Copy-Item -LiteralPath $preset -Destination $skinTarget -Force
-if (Test-Path -LiteralPath (Split-Path -Parent $workTarget)) {
-    Copy-Item -LiteralPath $preset -Destination $workTarget -Force
-}
 
 $position = Set-PrimaryMonitorPosition -SkinIni $skinTarget
 
