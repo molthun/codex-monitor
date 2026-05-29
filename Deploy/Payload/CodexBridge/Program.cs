@@ -4,15 +4,32 @@ using System.Net.NetworkInformation;
 using System.Text;
 using System.Text.Json;
 using System.Linq;
+using System.Windows.Forms;
 using LibreHardwareMonitor.Hardware;
 
 var configPath = GetArgValue(args, "--config")
     ?? Environment.GetEnvironmentVariable("CODEXMONITOR_CONFIG")
     ?? @"C:\CodexMonitor\config.json";
+
+var settingsMode = args.Any(a => string.Equals(a, "--settings", StringComparison.OrdinalIgnoreCase));
+if (settingsMode)
+{
+    var thread = new System.Threading.Thread(() =>
+    {
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        Application.Run(new CodexBridge.SettingsForm(configPath));
+    });
+    thread.SetApartmentState(System.Threading.ApartmentState.STA);
+    thread.Start();
+    thread.Join();
+    return;
+}
+
 var config = ReadConfig(configPath);
 var root = config.InstallRoot ?? @"C:\CodexMonitor";
 var outFile = config.BridgeOutputFile ?? Path.Combine(root, @"@Resources\temps.txt");
-var dumpMode = args.Any(a => string.Equals(a, "--dump", StringComparison.OrdinalIgnoreCase));
+var dumpMode = args.Any(a => string.Equals(a, "--once", StringComparison.OrdinalIgnoreCase) || args.Any(a => string.Equals(a, "--dump", StringComparison.OrdinalIgnoreCase)));
 var onceMode = args.Any(a => string.Equals(a, "--once", StringComparison.OrdinalIgnoreCase) || dumpMode);
 
 Directory.CreateDirectory(Path.GetDirectoryName(outFile)!);
