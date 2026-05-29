@@ -159,7 +159,8 @@ Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction Sil
 
 $skinResourcesTarget = Join-Path $skinTarget "@Resources"
 New-Item -ItemType Directory -Force -Path $InstallRoot, $resourcesTarget, $skinTarget, $presetsTarget, $skinResourcesTarget | Out-Null
-Copy-Item -LiteralPath $bridgeSource -Destination $InstallRoot -Recurse -Force
+New-Item -ItemType Directory -Force -Path $bridgeTarget | Out-Null
+Copy-Item -Path (Join-Path $bridgeSource "*") -Destination $bridgeTarget -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $payload "CodexMonitor.ini") -Destination (Join-Path $InstallRoot "CodexMonitor.ini") -Force
 Copy-Item -LiteralPath (Join-Path $skinSource "CodexMonitor.ini") -Destination (Join-Path $skinTarget "CodexMonitor.ini") -Force
 Copy-Item -LiteralPath (Join-Path $skinSource "CodexMonitor.1080p.ini") -Destination (Join-Path $presetsTarget "CodexMonitor.1080p.ini") -Force
