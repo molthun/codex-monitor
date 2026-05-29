@@ -36,6 +36,21 @@ namespace CodexBridge
         private static readonly Color Accent = Color.FromArgb(0, 210, 230);
         private static readonly Color AccentSoft = Color.FromArgb(74, 226, 181);
         private static readonly string[] NetworkRoles = { "Auto", "Ethernet", "Wi-Fi", "Wi-Fi hotspot", "Ignore" };
+        private static readonly string[] HiddenNetworkAdapterTerms =
+        {
+            "qos packet scheduler",
+            "wfp native mac layer",
+            "wfp 802.3 mac layer",
+            "lightweight filter",
+            "virtual switch extension",
+            "virtual filtering platform",
+            "wan miniport",
+            "teredo tunneling",
+            "pseudo-interface",
+            "vswitch",
+            "vethernet",
+            "hyper-v virtual"
+        };
 
         public SettingsForm(string configPath)
         {
@@ -127,7 +142,7 @@ namespace CodexBridge
             drives.Controls.Add(_pnlDrives);
             body.Controls.Add(drives);
 
-            var network = CreateCard(28, 300, 704, 280, "Network display", "Choose how active adapters are counted. Use Ignore for virtual, VPN, Bluetooth, or test adapters.");
+            var network = CreateCard(28, 300, 704, 280, "Network display", "Only real network adapters are shown here. Windows virtual/filter adapters are ignored automatically.");
             _pnlNetworkAdapters = new FlowLayoutPanel
             {
                 Location = new Point(18, 60),
@@ -447,6 +462,10 @@ namespace CodexBridge
                     .Select(x => x.Trim().ToLowerInvariant())
                     .Where(x => !string.IsNullOrEmpty(x))
                     .ToList();
+                foreach (var hiddenTerm in HiddenNetworkAdapterTerms)
+                {
+                    AddTerm(ignoreTerms, hiddenTerm);
+                }
                 var ethernetNames = ReadStringList(networkDict, "ethernetNamesContaining");
                 var wifiNames = ReadStringList(networkDict, "wifiNamesContaining");
                 var wifiApNames = ReadStringList(networkDict, "wifiApNamesContaining");
@@ -542,7 +561,8 @@ namespace CodexBridge
             _pnlNetworkAdapters.Controls.Clear();
             var adapters = NetworkInterface.GetAllNetworkInterfaces()
                 .Where(nic => nic.OperationalStatus == OperationalStatus.Up &&
-                              nic.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                              nic.NetworkInterfaceType != NetworkInterfaceType.Loopback &&
+                              !IsHiddenNetworkAdapter(nic))
                 .OrderBy(nic => nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ? 0 : 1)
                 .ThenBy(nic => nic.Name)
                 .ToList();
@@ -567,9 +587,10 @@ namespace CodexBridge
                     BackColor = Color.Transparent,
                     Tag = adapter
                 };
+                var displayName = GetNetworkAdapterDisplayName(adapter);
                 var name = new Label
                 {
-                    Text = adapter.Name,
+                    Text = displayName,
                     Location = new Point(0, 4),
                     Size = new Size(420, 24),
                     AutoEllipsis = true,
@@ -614,6 +635,25 @@ namespace CodexBridge
                 else if (ContainsTerm(wifi, adapterName)) role.SelectedItem = "Wi-Fi";
                 else if (ContainsTerm(ethernet, adapterName)) role.SelectedItem = "Ethernet";
             }
+        }
+
+        private static bool IsHiddenNetworkAdapter(NetworkInterface adapter)
+        {
+            var name = adapter.Name ?? "";
+            var description = adapter.Description ?? "";
+            var combined = $"{name} {description}";
+            return HiddenNetworkAdapterTerms.Any(term => combined.Contains(term, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string GetNetworkAdapterDisplayName(NetworkInterface adapter)
+        {
+            var name = adapter.Name ?? "";
+            var description = adapter.Description ?? "";
+            if (string.IsNullOrWhiteSpace(description) || name.Contains(description, StringComparison.OrdinalIgnoreCase))
+            {
+                return name;
+            }
+            return $"{name} - {description}";
         }
 
         private static List<string> ReadJsonStringList(JsonElement parent, string key)

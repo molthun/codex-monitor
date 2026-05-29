@@ -43,9 +43,19 @@
     "ignoreAdaptersContaining": [
       "hyper-v",
       "virtual switch",
+      "virtual switch extension",
+      "virtual filtering platform",
       "wsl",
       "teredo",
+      "teredo tunneling",
       "wan miniport",
+      "qos packet scheduler",
+      "wfp native mac layer",
+      "wfp 802.3 mac layer",
+      "lightweight filter",
+      "pseudo-interface",
+      "vswitch",
+      "vethernet",
       "bluetooth"
     ],
     "wifiApNamesContaining": [
