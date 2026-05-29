@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Diagnostics;
+using System.Net.NetworkInformation;
 
 namespace CodexBridge
 {
@@ -16,11 +17,13 @@ namespace CodexBridge
         private readonly string _installRoot;
         private string _rainmeterExe = @"C:\Program Files\Rainmeter\Rainmeter.exe";
 
-        private ComboBox _cmbProfile = null!;
+        private RadioButton _rdoAuto = null!;
+        private RadioButton _rdo1080p = null!;
+        private RadioButton _rdo4K = null!;
         private FlowLayoutPanel _pnlDrives = null!;
         private TextBox _txtNetworkExclusions = null!;
         private CheckBox _chkAutoUpdate = null!;
-        private NumericUpDown _numUpdateRate = null!;
+        private ComboBox _cmbUpdateRate = null!;
         private Button _btnSave = null!;
         private Button _btnCancel = null!;
 
@@ -43,7 +46,7 @@ namespace CodexBridge
         private void InitializeComponent()
         {
             this.Text = "CodexMonitor Settings";
-            this.ClientSize = new Size(480, 540);
+            this.ClientSize = new Size(480, 640);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
@@ -51,6 +54,23 @@ namespace CodexBridge
             this.BackColor = Color.FromArgb(18, 18, 18);
             this.ForeColor = Color.White;
             this.Font = new Font("Segoe UI", 9.75f, FontStyle.Regular);
+
+            // Fetch active network adapters for guidance
+            string activeAdapters = "Active adapters: None";
+            try
+            {
+                var names = NetworkInterface.GetAllNetworkInterfaces()
+                    .Where(nic => nic.OperationalStatus == OperationalStatus.Up && 
+                                  nic.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                    .Select(nic => nic.Name)
+                    .Distinct()
+                    .ToList();
+                if (names.Count > 0)
+                {
+                    activeAdapters = "Active: " + string.Join(", ", names);
+                }
+            }
+            catch { }
 
             // Title Header Panel
             Panel pnlHeader = new Panel
@@ -78,106 +98,130 @@ namespace CodexBridge
             Panel pnlBody = new Panel
             {
                 Location = new Point(0, 65),
-                Size = new Size(480, 415),
+                Size = new Size(480, 515),
                 BackColor = Color.FromArgb(18, 18, 18)
             };
             this.Controls.Add(pnlBody);
 
             // Card 1: Widget Size / Profile Mode
-            Panel cardProfile = CreateCard(20, 12, 440, 80);
+            Panel cardProfile = CreateCard(20, 12, 440, 75);
             Label lblProfileTitle = CreateCardTitle("1. Widget Size / Profile Mode", 15, 12);
-            _cmbProfile = new ComboBox
+            _rdoAuto = new RadioButton
             {
+                Text = "Auto (Detect)",
                 Location = new Point(15, 38),
-                Size = new Size(410, 25),
-                DropDownStyle = ComboBoxStyle.DropDownList,
-                BackColor = Color.FromArgb(45, 45, 45),
-                ForeColor = Color.White,
+                Size = new Size(130, 25),
+                FlatStyle = FlatStyle.Flat,
+                Checked = true
+            };
+            _rdo1080p = new RadioButton
+            {
+                Text = "1080p (Compact)",
+                Location = new Point(150, 38),
+                Size = new Size(140, 25),
                 FlatStyle = FlatStyle.Flat
             };
-            _cmbProfile.Items.AddRange(new object[] { "Auto (Detect resolution)", "1080p (Compact size)", "4K (Large size)" });
-            _cmbProfile.SelectedIndex = 0;
+            _rdo4K = new RadioButton
+            {
+                Text = "4K (Large)",
+                Location = new Point(295, 38),
+                Size = new Size(110, 25),
+                FlatStyle = FlatStyle.Flat
+            };
             cardProfile.Controls.Add(lblProfileTitle);
-            cardProfile.Controls.Add(_cmbProfile);
+            cardProfile.Controls.Add(_rdoAuto);
+            cardProfile.Controls.Add(_rdo1080p);
+            cardProfile.Controls.Add(_rdo4K);
             pnlBody.Controls.Add(cardProfile);
 
             // Card 2: Hard Drives Selection
-            Panel cardDrives = CreateCard(20, 104, 440, 85);
+            Panel cardDrives = CreateCard(20, 97, 440, 150);
             Label lblDrivesTitle = CreateCardTitle("2. Storage Drives to Display", 15, 12);
             _pnlDrives = new FlowLayoutPanel
             {
                 Location = new Point(15, 38),
-                Size = new Size(410, 38),
+                Size = new Size(410, 102),
                 AutoScroll = true,
-                BackColor = Color.Transparent
+                BackColor = Color.Transparent,
+                FlowDirection = FlowDirection.TopDown,
+                WrapContents = false
             };
             cardDrives.Controls.Add(lblDrivesTitle);
             cardDrives.Controls.Add(_pnlDrives);
             pnlBody.Controls.Add(cardDrives);
 
             // Card 3: Network Exclusions
-            Panel cardNetwork = CreateCard(20, 201, 440, 95);
+            Panel cardNetwork = CreateCard(20, 257, 440, 125);
             Label lblNetworkTitle = CreateCardTitle("3. Network Adapter Filters (Ignore list)", 15, 12);
             _txtNetworkExclusions = new TextBox
             {
-                Location = new Point(15, 38),
+                Location = new Point(15, 36),
                 Size = new Size(410, 25),
                 BackColor = Color.FromArgb(45, 45, 45),
                 ForeColor = Color.White,
                 BorderStyle = BorderStyle.FixedSingle
             };
+            Label lblActiveNetwork = new Label
+            {
+                Text = activeAdapters,
+                Font = new Font("Segoe UI", 8.0f, FontStyle.Regular),
+                Location = new Point(15, 66),
+                Size = new Size(410, 20),
+                ForeColor = Color.FromArgb(0, 183, 195)
+            };
             Label lblNetworkHelp = new Label
             {
                 Text = "Comma-separated terms to filter virtual switches or ignored cards.",
                 Font = new Font("Segoe UI", 8.0f, FontStyle.Italic),
-                Location = new Point(15, 68),
+                Location = new Point(15, 88),
                 Size = new Size(410, 20),
                 ForeColor = Color.DarkGray
             };
             cardNetwork.Controls.Add(lblNetworkTitle);
             cardNetwork.Controls.Add(_txtNetworkExclusions);
+            cardNetwork.Controls.Add(lblActiveNetwork);
             cardNetwork.Controls.Add(lblNetworkHelp);
             pnlBody.Controls.Add(cardNetwork);
 
             // Card 4: Updates and Telemetry Rate
-            Panel cardAdvanced = CreateCard(20, 302, 440, 105);
+            Panel cardAdvanced = CreateCard(20, 392, 440, 110);
             Label lblAdvancedTitle = CreateCardTitle("4. Telemetry Update Rate and Updates", 15, 12);
             _chkAutoUpdate = new CheckBox
             {
                 Text = "Enable background automatic updates",
-                Location = new Point(15, 38),
+                Location = new Point(15, 35),
                 Size = new Size(410, 25),
                 FlatStyle = FlatStyle.Flat,
                 Checked = true
             };
             Label lblRate = new Label
             {
-                Text = "Update interval (seconds):",
-                Location = new Point(15, 68),
+                Text = "Update interval:",
+                Location = new Point(15, 71),
                 Size = new Size(160, 25),
                 ForeColor = Color.White
             };
-            _numUpdateRate = new NumericUpDown
+            _cmbUpdateRate = new ComboBox
             {
-                Location = new Point(180, 66),
-                Size = new Size(60, 25),
-                Minimum = 1,
-                Maximum = 60,
-                Value = 1,
+                Location = new Point(180, 68),
+                Size = new Size(120, 25),
+                DropDownStyle = ComboBoxStyle.DropDownList,
                 BackColor = Color.FromArgb(45, 45, 45),
                 ForeColor = Color.White,
-                BorderStyle = BorderStyle.FixedSingle
+                FlatStyle = FlatStyle.Flat
             };
+            _cmbUpdateRate.Items.AddRange(new object[] { "1 second", "2 seconds", "3 seconds", "5 seconds", "10 seconds", "30 seconds" });
+            _cmbUpdateRate.SelectedIndex = 0;
             cardAdvanced.Controls.Add(lblAdvancedTitle);
             cardAdvanced.Controls.Add(_chkAutoUpdate);
             cardAdvanced.Controls.Add(lblRate);
-            cardAdvanced.Controls.Add(_numUpdateRate);
+            cardAdvanced.Controls.Add(_cmbUpdateRate);
             pnlBody.Controls.Add(cardAdvanced);
 
             // Bottom Command Button Panel
             Panel pnlBottom = new Panel
             {
-                Location = new Point(0, 480),
+                Location = new Point(0, 580),
                 Size = new Size(480, 60),
                 BackColor = Color.FromArgb(26, 26, 26)
             };
@@ -262,17 +306,31 @@ namespace CodexBridge
             // Populate Drives Panel dynamically
             var availableDrives = DriveInfo.GetDrives()
                 .Where(d => d.DriveType == DriveType.Fixed || d.DriveType == DriveType.Removable)
-                .Select(d => d.Name.Substring(0, 2))
-                .OrderBy(name => name)
+                .OrderBy(d => d.Name)
                 .ToList();
 
             foreach (var drive in availableDrives)
             {
+                string rawPrefix = drive.Name.Substring(0, 2); // e.g., "C:"
+                string infoText = rawPrefix;
+                try
+                {
+                    if (drive.IsReady)
+                    {
+                        string label = string.IsNullOrEmpty(drive.VolumeLabel) ? "" : $" [{drive.VolumeLabel}]";
+                        double freeGb = drive.TotalFreeSpace / (1024.0 * 1024.0 * 1024.0);
+                        double totalGb = drive.TotalSize / (1024.0 * 1024.0 * 1024.0);
+                        infoText = $"{rawPrefix}{label} ({freeGb:F0} GB free of {totalGb:F0} GB)";
+                    }
+                }
+                catch { }
+
                 var chk = new CheckBox
                 {
-                    Text = drive,
-                    Size = new Size(50, 25),
-                    Margin = new Padding(0, 0, 10, 0),
+                    Text = infoText,
+                    Tag = rawPrefix,
+                    Size = new Size(380, 25),
+                    Margin = new Padding(0, 2, 0, 2),
                     ForeColor = Color.White,
                     FlatStyle = FlatStyle.Flat
                 };
@@ -290,25 +348,41 @@ namespace CodexBridge
                 using var document = JsonDocument.Parse(json);
                 var rootElement = document.RootElement;
 
-                // 1. Load Profile indexes
+                // 1. Load Profile mode
                 if (rootElement.TryGetProperty("profiles", out var profiles) && profiles.ValueKind == JsonValueKind.Object)
                 {
                     if (profiles.TryGetProperty("default", out var def) && def.ValueKind == JsonValueKind.String)
                     {
                         var mode = def.GetString();
-                        if (string.Equals(mode, "1080p", StringComparison.OrdinalIgnoreCase)) _cmbProfile.SelectedIndex = 1;
-                        else if (string.Equals(mode, "4K", StringComparison.OrdinalIgnoreCase)) _cmbProfile.SelectedIndex = 2;
-                        else _cmbProfile.SelectedIndex = 0;
+                        if (string.Equals(mode, "1080p", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _rdo1080p.Checked = true;
+                        }
+                        else if (string.Equals(mode, "4K", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _rdo4K.Checked = true;
+                        }
+                        else
+                        {
+                            _rdoAuto.Checked = true;
+                        }
                     }
                 }
 
                 // 2. Set drive checkboxes
                 if (rootElement.TryGetProperty("disks", out var disks) && disks.ValueKind == JsonValueKind.Array)
                 {
-                    var configuredDrives = disks.EnumerateArray().Select(x => x.GetString()!.Substring(0, 2)).ToList();
+                    var configuredDrives = disks.EnumerateArray()
+                        .Select(x => x.GetString()?.TrimEnd('\\') ?? "")
+                        .Where(x => !string.IsNullOrEmpty(x))
+                        .ToList();
                     foreach (CheckBox chk in _pnlDrives.Controls)
                     {
-                        chk.Checked = configuredDrives.Contains(chk.Text, StringComparer.OrdinalIgnoreCase);
+                        var tag = chk.Tag as string;
+                        if (tag != null)
+                        {
+                            chk.Checked = configuredDrives.Contains(tag, StringComparer.OrdinalIgnoreCase);
+                        }
                     }
                 }
 
@@ -327,14 +401,25 @@ namespace CodexBridge
                 {
                     if (bridge.TryGetProperty("updateSeconds", out var seconds) && seconds.TryGetDouble(out var rate))
                     {
-                        _numUpdateRate.Value = Math.Max(1, (int)rate);
+                        int rateSec = Math.Max(1, (int)rate);
+                        string targetText = rateSec == 1 ? "1 second" : $"{rateSec} seconds";
+                        int idx = _cmbUpdateRate.FindStringExact(targetText);
+                        if (idx >= 0)
+                        {
+                            _cmbUpdateRate.SelectedIndex = idx;
+                        }
+                        else
+                        {
+                            _cmbUpdateRate.Items.Add(targetText);
+                            _cmbUpdateRate.SelectedIndex = _cmbUpdateRate.Items.Count - 1;
+                        }
                     }
                 }
 
                 // 5. Auto Updates
                 if (rootElement.TryGetProperty("display", out var display) && display.ValueKind == JsonValueKind.Object)
                 {
-                    if (display.TryGetProperty("autoUpdate", out var autoUpdate) && autoUpdate.ValueKind == JsonValueKind.True || autoUpdate.ValueKind == JsonValueKind.False)
+                    if (display.TryGetProperty("autoUpdate", out var autoUpdate) && (autoUpdate.ValueKind == JsonValueKind.True || autoUpdate.ValueKind == JsonValueKind.False))
                     {
                         _chkAutoUpdate.Checked = autoUpdate.GetBoolean();
                     }
@@ -369,11 +454,11 @@ namespace CodexBridge
                 // Set profiles object
                 var profilesDict = new Dictionary<string, object>
                 {
-                    { "auto", _cmbProfile.SelectedIndex == 0 }
+                    { "auto", _rdoAuto.Checked }
                 };
                 var mode = "Auto";
-                if (_cmbProfile.SelectedIndex == 1) mode = "1080p";
-                else if (_cmbProfile.SelectedIndex == 2) mode = "4K";
+                if (_rdo1080p.Checked) mode = "1080p";
+                else if (_rdo4K.Checked) mode = "4K";
                 profilesDict.Add("default", mode);
                 profilesDict.Add("compact", "1080p");
                 profilesDict.Add("large", "4K");
@@ -383,9 +468,9 @@ namespace CodexBridge
                 var selectedDrives = new List<string>();
                 foreach (CheckBox chk in _pnlDrives.Controls)
                 {
-                    if (chk.Checked)
+                    if (chk.Checked && chk.Tag is string driveTag)
                     {
-                        selectedDrives.Add(chk.Text + "\\");
+                        selectedDrives.Add(driveTag + "\\");
                     }
                 }
                 if (selectedDrives.Count == 0)
@@ -422,7 +507,18 @@ namespace CodexBridge
                 {
                     bridgeDict = JsonSerializer.Deserialize<Dictionary<string, object>>(briElement.GetRawText()) ?? bridgeDict;
                 }
-                bridgeDict["updateSeconds"] = (int)_numUpdateRate.Value;
+
+                int rateSeconds = 1;
+                if (_cmbUpdateRate.SelectedItem != null)
+                {
+                    string selectedText = _cmbUpdateRate.SelectedItem.ToString() ?? "";
+                    var match = System.Text.RegularExpressions.Regex.Match(selectedText, @"\d+");
+                    if (match.Success && int.TryParse(match.Value, out int parsedRate))
+                    {
+                        rateSeconds = parsedRate;
+                    }
+                }
+                bridgeDict["updateSeconds"] = rateSeconds;
                 configDict["bridge"] = bridgeDict;
 
                 // Save back with UTF-8 encoding
