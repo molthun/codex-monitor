@@ -2,6 +2,9 @@
 
 ## 2026-05-29
 
+- Added a unified `Setup-CodexMonitor.ps1` self-elevating setup manager script to automatically check and install prerequisites (Rainmeter, FanControl, and .NET 10 SDK/Runtime) via `winget`.
+- Created an interactive `Configure-CodexMonitor.ps1` CLI configuration wizard to dynamically scan local disk drives and network adapters, guide profile choices, and save system configurations to `config.json` without manual text editing.
+- Integrated a background Git auto-updater loop inside `Watch-PrimaryDisplay.ps1` to pull remote Git updates, automatically rebuild the C# bridge, and reload the widget every 6 hours.
 - Synchronized the root and payload default skins with the 1080p preset, preserving variable-based health background sizing, and made 4K section icons use the committed PNG assets consistently.
 - Updated the display watcher to switch automatically between 1080p and 4K profiles when the primary display height changes.
 - Increased the 4K Rainmeter profile height to `720 x 1500`, normalized section icons, and re-spaced the cooling, network, disk I/O, and drive usage rows to prevent text/bar overlaps.

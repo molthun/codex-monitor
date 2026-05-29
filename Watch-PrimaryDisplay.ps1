@@ -20,6 +20,92 @@ $config = Read-CodexConfig -Path $ConfigPath
 if ($config.installRoot -and $InstallRoot -eq "C:\CodexMonitor") { $InstallRoot = $config.installRoot }
 if ($config.display.watchIntervalSeconds -ne $null -and $IntervalSeconds -eq 5) { $IntervalSeconds = [int]$config.display.watchIntervalSeconds }
 
+function Test-Command {
+    param([string]$Name)
+    return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
+}
+
+function Show-Notification {
+    param([string]$Title, [string]$Message)
+    try {
+        Add-Type -AssemblyName System.Windows.Forms
+        $notification = New-Object System.Windows.Forms.NotifyIcon
+        $notification.Icon = [System.Drawing.SystemIcons]::Information
+        $notification.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Info
+        $notification.BalloonTipTitle = $Title
+        $notification.BalloonTipText = $Message
+        $notification.Visible = $true
+        $notification.ShowBalloonTip(5000)
+        Start-Sleep -Seconds 1
+        $notification.Dispose()
+    } catch {
+        # Ignore errors if forms assembly fails
+    }
+}
+
+function Check-ForUpdates {
+    if ($config.display.autoUpdate -eq $false) { return }
+
+    $gitDir = Join-Path $InstallRoot ".git"
+    if (-not (Test-Path -LiteralPath $gitDir)) { return }
+    if (-not (Test-Command "git")) { return }
+
+    try {
+        # Fetch remote updates
+        $null = git -C $InstallRoot fetch origin 2>&1
+        $local = (git -C $InstallRoot rev-parse HEAD).Trim()
+        $remote = (git -C $InstallRoot rev-parse origin/main).Trim()
+
+        if ($local -ne $remote) {
+            Write-Host "New version found. Pulling updates..."
+            Show-Notification "CodexMonitor Update" "Installing the latest updates from GitHub..."
+
+            # Pull changes
+            $null = git -C $InstallRoot pull origin main 2>&1
+
+            # Stop the elevated bridge task if running to allow file updates
+            Stop-Process -Name "CodexBridge" -Force -ErrorAction SilentlyContinue
+
+            # Rebuild the bridge
+            if (Test-Command "dotnet") {
+                & dotnet build (Join-Path $InstallRoot "CodexBridge\CodexBridge.csproj") -c Release | Out-Null
+            }
+
+            # Copy updated presets/payload to the active Rainmeter skin target
+            $skinPath = Get-RainmeterSkinPath
+            $skinTarget = Join-Path $skinPath "CodexMonitor"
+            if (Test-Path -LiteralPath $skinTarget) {
+                $payloadIcons = Join-Path $InstallRoot "Deploy\Payload\@Resources\Icons"
+                $targetIcons = Join-Path $skinTarget "@Resources\Icons"
+                if (Test-Path -LiteralPath $payloadIcons) {
+                    New-Item -ItemType Directory -Force -Path $targetIcons | Out-Null
+                    Copy-Item -LiteralPath "$payloadIcons\*" -Destination $targetIcons -Force
+                }
+                
+                $mode = Get-AutoProfileMode -ScreenHeight [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height
+                $preset = Get-PresetPath -Mode $mode
+                if ($preset) {
+                    Copy-Item -LiteralPath $preset -Destination (Join-Path $skinTarget "CodexMonitor.ini") -Force
+                }
+            }
+
+            # Restart the elevated bridge task
+            schtasks.exe /run /tn "CodexMonitor Bridge Elevated" | Out-Null
+
+            # Refresh Rainmeter
+            $rainmeterExe = if ($config.rainmeter.executable) { $config.rainmeter.executable } else { "C:\Program Files\Rainmeter\Rainmeter.exe" }
+            if (Test-Path -LiteralPath $rainmeterExe) {
+                & $rainmeterExe !Refresh "CodexMonitor"
+            }
+
+            Show-Notification "CodexMonitor Updated" "Widget has been updated to the latest version successfully!"
+        }
+    }
+    catch {
+        # Log failure
+    }
+}
+
 function Get-RainmeterSkinPath {
     if ($config.rainmeter.skinPath) { return $config.rainmeter.skinPath }
     $rainmeterIni = Join-Path $env:APPDATA "Rainmeter\Rainmeter.ini"
@@ -203,9 +289,15 @@ function Move-WidgetToPrimary {
 }
 
 $lastSignature = ""
+$lastUpdateCheck = [System.DateTime]::MinValue
 
 while ($true) {
     try {
+        if ((Get-Date) -gt $lastUpdateCheck.AddHours(6)) {
+            Check-ForUpdates
+            $lastUpdateCheck = Get-Date
+        }
+
         Add-Type -AssemblyName System.Windows.Forms
         $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
         Switch-ProfileIfNeeded -ScreenBounds $screen
