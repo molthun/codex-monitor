@@ -18,7 +18,7 @@ This document provides a systematic analysis of CodexMonitor's current third-par
 * **Alternatives**:
   * **Direct Hardware Reading via C#**: We can reference the open-source **LibreHardwareMonitorLib** directly inside the C# bridge project. This library can read CPU, GPU, RAM, Disk, and Motherboard Super I/O sensors directly.
 * **Simplification Effort**: **Medium** (requires adding LibreHardwareMonitorLib and writing code to initialize and query the hardware sensors inside the bridge).
-* **Stability Impact**: **Very High**. FanControl is no longer required as the widget's sensor source. CodexMonitor is display-only and leaves fan behavior to the user's BIOS/UEFI, drivers, or existing system tools.
+* **Stability Impact**: **Very High**. CodexMonitor is display-only and leaves fan behavior to the user's BIOS/UEFI, drivers, or existing system tools.
 
 ---
 

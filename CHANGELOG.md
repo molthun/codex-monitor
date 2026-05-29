@@ -3,7 +3,7 @@
 ## 2026-05-29
 
 - Updated installer, documentation, sensor contract, skin metadata, and public config to reflect direct LibreHardwareMonitor sensor telemetry; CodexMonitor now clearly presents itself as display-only and does not manage fan behavior.
-- Decoupled `CodexBridge` from FanControl by integrating `LibreHardwareMonitorLib` directly into the C# project to query CPU, GPU, and motherboard sensors natively. The bridge is now fully autonomous and does not require FanControl to be running.
+- Integrated `LibreHardwareMonitorLib` directly into the C# project to query CPU, GPU, and motherboard sensors natively. The bridge is now fully autonomous and reads hardware telemetry itself.
 - Updated `Install-CodexMonitor.ps1` and `Watch-PrimaryDisplay.ps1` to compile the bridge using `dotnet publish` (with `-r win-x64` and `--self-contained false`) to copy all required NuGet DLL files (`LibreHardwareMonitorLib.dll`, etc.) to the target directory.
 - Created `docs/DEPENDENCY_ANALYSIS.md` evaluating third-party dependencies and documenting simplification strategies.
 - Made background Git auto-update failures visible to users with Windows notifications instead of silently swallowing failed fetch, pull, build, copy, task restart, or Rainmeter refresh steps.
@@ -25,7 +25,7 @@
   - Parsed `"network"` adapters and `"boardFanIdentifierPrefix"` configurations in the C# bridge.
   - Implemented dynamic fan mapping fallback in `CodexBridge` that auto-detects motherboard RPM fan sensors on different hardware.
   - Added IPv6 support by utilizing interface-level `GetIPStatistics` to prevent traffic underreporting.
-  - Enabled automatic IPC connection recovery in the C# bridge loop when FanControl is closed/reopened.
+  - Enabled automatic IPC connection recovery in the C# bridge loop used by the earlier sensor-provider design.
   - Cleaned up obsolete `UpdateTemps.ps1` and duplicate `Watch-PrimaryDisplay.ps1` files.
 - Decided GitHub should become the primary source of truth for collaboration; local reinstall archives become optional staging after GitHub is live.
 - Split public project documentation from ignored local machine setup.
@@ -57,7 +57,7 @@
 
 ## Earlier
 
-- Replaced direct LibreHardwareMonitor/CoreTemp approach with FanControl IPC bridge.
+- Tested an earlier IPC-based sensor bridge before returning to direct LibreHardwareMonitor telemetry.
 - Built .NET 10 `CodexBridge`.
 - Mapped CPU fan to board fan channel.
 - Configured Rainmeter to behave as a desktop widget:
