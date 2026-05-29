@@ -80,7 +80,6 @@ function Upgrade-App {
 }
 
 Upgrade-App -Id "Rainmeter.Rainmeter" -Name "Rainmeter"
-Upgrade-App -Id "Microsoft.DotNet.SDK.10" -Name ".NET 10 SDK"
 
 # 3. Restart processes
 Write-Host ""

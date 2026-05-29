@@ -143,7 +143,7 @@ $resourcesTarget = Join-Path $InstallRoot "@Resources"
 $bridgeTarget = Join-Path $InstallRoot "CodexBridge"
 $presetsTarget = Join-Path $InstallRoot "Presets"
 $bridgeProject = Join-Path $bridgeTarget "CodexBridge.csproj"
-$bridgeExe = Join-Path $bridgeTarget "bin\Release\net10.0\CodexBridge.exe"
+$bridgeExe = Join-Path $bridgeTarget "CodexBridge.exe"
 $watcherScript = Join-Path $InstallRoot "Watch-PrimaryDisplay.ps1"
 $configTarget = Join-Path $InstallRoot "config.json"
 $rainmeterExe = if ($config.rainmeter.executable) { $config.rainmeter.executable } else { "C:\Program Files\Rainmeter\Rainmeter.exe" }
@@ -194,18 +194,7 @@ if (Test-Path -LiteralPath $configTarget) {
         Write-Warning "Failed to update outputFile in config.json: $_"
     }
 }
-if (-not (Test-Path -LiteralPath $bridgeExe)) {
-    if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
-        throw "dotnet SDK/runtime is not available. Run Deploy\Install-Prerequisites-And-Restore.ps1 first."
-    }
 
-    Write-Host "Publishing CodexBridge..."
-    $outDir = Join-Path $bridgeTarget "bin\Release\net10.0"
-    & dotnet publish $bridgeProject -c Release -r win-x64 --self-contained false -o $outDir
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $bridgeExe)) {
-        throw "CodexBridge publish failed."
-    }
-}
 
 
 $sizeSwitcher = Join-Path $packageRoot "Switch-WidgetSize.ps1"
