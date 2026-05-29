@@ -48,16 +48,17 @@ if (-not (Test-Command "winget")) {
     exit 1
 }
 
-# Install dependencies
-if (-not (Test-Command "git")) {
-    Install-WingetPackage -Id "Git.Git" -Name "Git"
-    $gitCmdPath = "C:\Program Files\Git\cmd"
-    if (Test-Path -LiteralPath $gitCmdPath) {
-        $env:PATH += ";$gitCmdPath"
-        Write-Host "Appended Git path to environment PATH dynamically." -ForegroundColor Yellow
-    }
-} else {
-    Write-Host "Git is already installed." -ForegroundColor Green
+# Write initial .local_version if we are in a Git clone
+$projectRoot = Split-Path -Parent $PSScriptRoot
+if ((Test-Command "git") -and (Test-Path -LiteralPath (Join-Path $projectRoot ".git"))) {
+    try {
+        $sha = (git -C $projectRoot rev-parse HEAD 2>$null | Select-Object -First 1)
+        if ($sha) {
+            $versionFile = Join-Path $projectRoot ".local_version"
+            Set-Content -LiteralPath $versionFile -Value $sha.Trim() -Encoding UTF8
+            Write-Host "Initialized .local_version file with current Git SHA." -ForegroundColor Green
+        }
+    } catch {}
 }
 
 Install-WingetPackage -Id "Rainmeter.Rainmeter" -Name "Rainmeter"

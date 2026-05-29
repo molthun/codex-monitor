@@ -104,7 +104,7 @@ if ($excludeInput.Trim().ToLower() -eq "n") {
 # 4. Auto-Updater Enable
 Write-Host ""
 Write-Host "4. Auto-Update Settings:" -ForegroundColor White
-$updateInput = Read-Host "Enable background automatic Git updates? [Y/n] (Default: Y)"
+$updateInput = Read-Host "Enable background automatic GitHub updates? [Y/n] (Default: Y)"
 if ($updateInput.Trim().ToLower() -eq "n") {
     $config.display | Add-Member -NotePropertyName "autoUpdate" -NotePropertyValue $false -Force
     Write-Host "Auto-updates: Disabled" -ForegroundColor Yellow

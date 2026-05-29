@@ -75,23 +75,80 @@ function Show-UpdateFailure {
 function Check-ForUpdates {
     if ($config.display.autoUpdate -eq $false) { return }
 
-    $gitDir = Join-Path $InstallRoot ".git"
-    if (-not (Test-Path -LiteralPath $gitDir)) { return }
-    if (-not (Test-Command "git")) { return }
-
     try {
-        Invoke-CheckedCommand -Description "Git fetch" -Command { git -C $InstallRoot fetch origin }
-        $local = (Invoke-CheckedCommand -Description "Read local revision" -Command { git -C $InstallRoot rev-parse HEAD } | Select-Object -First 1).Trim()
-        $remote = (Invoke-CheckedCommand -Description "Read remote revision" -Command { git -C $InstallRoot rev-parse origin/main } | Select-Object -First 1).Trim()
+        $versionFile = Join-Path $InstallRoot ".local_version"
+        $local = ""
+        if (Test-Path -LiteralPath $versionFile) {
+            $local = (Get-Content -LiteralPath $versionFile -Raw).Trim()
+        }
+        else {
+            if ((Test-Path -LiteralPath (Join-Path $InstallRoot ".git")) -and (Test-Command "git")) {
+                $local = (Invoke-CheckedCommand -Description "Read local revision" -Command { git -C $InstallRoot rev-parse HEAD } | Select-Object -First 1).Trim()
+                Set-Content -LiteralPath $versionFile -Value $local -Encoding UTF8
+            }
+        }
+
+        $headers = @{
+            "User-Agent" = "CodexMonitor-Updater"
+        }
+        $response = Invoke-RestMethod -Uri "https://api.github.com/repos/molthun/codex-monitor/commits/main" -Headers $headers -TimeoutSec 15
+        $remote = $response.sha
+
+        if (-not $remote) {
+            throw "Failed to retrieve remote version SHA from GitHub API."
+        }
 
         if ($local -ne $remote) {
-            Write-Host "New version found. Pulling updates..."
+            Write-Host "New version found (Local: $local, Remote: $remote). Pulling updates..."
             Show-Notification "CodexMonitor Update" "Installing the latest updates from GitHub..."
 
-            Invoke-CheckedCommand -Description "Git pull" -Command { git -C $InstallRoot pull origin main }
+            $zipUrl = "https://github.com/molthun/codex-monitor/archive/refs/heads/main.zip"
+            $tempZip = Join-Path $env:TEMP "codex-monitor-main.zip"
+            $tempExtract = Join-Path $env:TEMP "codex-monitor-extract"
+
+            if (Test-Path -LiteralPath $tempZip) { Remove-Item -LiteralPath $tempZip -Force }
+            if (Test-Path -LiteralPath $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force }
+
+            Invoke-WebRequest -Uri $zipUrl -OutFile $tempZip -UseBasicParsing
+            Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
+
+            $extractedRepoDir = Join-Path $tempExtract "codex-monitor-main"
+            if (-not (Test-Path -LiteralPath $extractedRepoDir)) {
+                $extractedRepoDir = Get-ChildItem -Path $tempExtract -Directory | Select-Object -First 1
+                if (-not $extractedRepoDir) {
+                    throw "Failed to locate extracted repository directory in ZIP."
+                }
+                $extractedRepoDir = $extractedRepoDir.FullName
+            }
 
             # Stop the elevated bridge task if running to allow file updates
             Stop-Process -Name "CodexBridge" -Force -ErrorAction SilentlyContinue
+
+            # Copy all files from ZIP to $InstallRoot, EXCLUDING config.json to preserve user settings
+            Get-ChildItem -Path $extractedRepoDir -Recurse | ForEach-Object {
+                $relativePath = $_.FullName.Substring($extractedRepoDir.Length + 1)
+                $destPath = Join-Path $InstallRoot $relativePath
+
+                if ($_.PsIsContainer) {
+                    New-Item -ItemType Directory -Path $destPath -Force | Out-Null
+                } else {
+                    if ($relativePath -ieq "config.json" -or $relativePath -like ".git\*") {
+                        return
+                    }
+
+                    $parentDir = Split-Path $destPath
+                    if (-not (Test-Path -LiteralPath $parentDir)) {
+                        New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+                    }
+
+                    Copy-Item -LiteralPath $_.FullName -Destination $destPath -Force
+                }
+            }
+
+            Remove-Item -LiteralPath $tempZip -Force
+            Remove-Item -LiteralPath $tempExtract -Recurse -Force
+
+            Set-Content -LiteralPath $versionFile -Value $remote -Encoding UTF8
 
             # Rebuild the bridge
             if (Test-Command "dotnet") {
@@ -151,7 +208,7 @@ function Check-ForPrerequisiteUpdates {
     if (-not (Test-Command "winget")) { return }
 
     try {
-        $packageIds = @("Rainmeter.Rainmeter", "Microsoft.DotNet.SDK.10", "Git.Git")
+        $packageIds = @("Rainmeter.Rainmeter", "Microsoft.DotNet.SDK.10")
         $foundUpdates = @()
 
         $output = winget list --upgrade-available 2>$null

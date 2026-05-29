@@ -32,58 +32,59 @@ if (-not (Test-Command "winget")) {
     exit 1
 }
 
-# Install Git if not present
-if (-not (Test-Command "git")) {
-    Write-Host "Git is not installed. Installing Git via winget..." -ForegroundColor Yellow
-    & winget install --id Git.Git --exact --accept-source-agreements --accept-package-agreements --silent
-    if ($LASTEXITCODE -ne 0) {
-        Write-Warning "winget failed to install Git. Please install Git manually."
-    }
-    
-    # Append Git cmd directory to current session's PATH
-    $gitCmdPath = "C:\Program Files\Git\cmd"
-    if (Test-Path -LiteralPath $gitCmdPath) {
-        $env:PATH += ";$gitCmdPath"
-    }
-} else {
-    Write-Host "Git is already installed." -ForegroundColor Green
-}
-
-if (-not (Test-Command "git")) {
-    Write-Error "Git could not be verified on the PATH. Please install Git and try again."
-    Write-Host "Press any key to exit..."
-    [void][System.Console]::ReadKey()
-    exit 1
-}
-
 $installDir = "C:\CodexMonitor"
-$repoUrl = "https://github.com/molthun/codex-monitor.git"
+$zipUrl = "https://github.com/molthun/codex-monitor/archive/refs/heads/main.zip"
+$tempZip = Join-Path $env:TEMP "codex-monitor-bootstrap.zip"
+$tempExtract = Join-Path $env:TEMP "codex-monitor-bootstrap-extract"
 
-if (-not (Test-Path -LiteralPath $installDir)) {
-    Write-Host "Cloning CodexMonitor repository into $installDir..." -ForegroundColor Yellow
-    New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-    & git clone $repoUrl $installDir
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to clone repository from $repoUrl."
+if (Test-Path -LiteralPath $tempZip) { Remove-Item -LiteralPath $tempZip -Force }
+if (Test-Path -LiteralPath $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force }
+
+if (Test-Path -LiteralPath $installDir) {
+    Write-Host "$installDir already exists. Backing up existing folder..." -ForegroundColor Yellow
+    $backupDir = "$installDir-backup-$(Get-Date -Format 'yyyyMMddHHmmss')"
+    Rename-Item -Path $installDir -NewName (Split-Path $backupDir -Leaf)
+}
+
+Write-Host "Downloading CodexMonitor repository from $zipUrl..." -ForegroundColor Yellow
+Invoke-WebRequest -Uri $zipUrl -OutFile $tempZip -UseBasicParsing
+
+Write-Host "Extracting repository source archive..." -ForegroundColor Yellow
+Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
+
+$extractedDir = Join-Path $tempExtract "codex-monitor-main"
+if (-not (Test-Path -LiteralPath $extractedDir)) {
+    $extractedDir = Get-ChildItem -Path $tempExtract -Directory | Select-Object -First 1
+    if (-not $extractedDir) {
+        Write-Error "Failed to locate extracted files."
         Write-Host "Press any key to exit..."
         [void][System.Console]::ReadKey()
         exit 1
     }
-    Write-Host "Repository cloned successfully!" -ForegroundColor Green
-} else {
-    Write-Host "$installDir already exists. Verifying repository..." -ForegroundColor Yellow
-    if (Test-Path -LiteralPath (Join-Path $installDir ".git")) {
-        Write-Host "Pulling latest updates..." -ForegroundColor Green
-        & git -C $installDir pull
-    } else {
-        Write-Warning "Directory $installDir exists but is not a Git repository."
-        Write-Host "Cloning repository..." -ForegroundColor Yellow
-        # Back up existing files
-        $backupDir = "$installDir-backup-$(Get-Date -Format 'yyyyMMddHHmmss')"
-        Rename-Item -Path $installDir -NewName (Split-Path $backupDir -Leaf)
-        & git clone $repoUrl $installDir
-    }
+    $extractedDir = $extractedDir.FullName
 }
+
+New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+Copy-Item -LiteralPath "$extractedDir\*" -Destination $installDir -Recurse -Force
+
+# Fetch latest remote SHA from GitHub API and write to C:\CodexMonitor\.local_version
+try {
+    Write-Host "Fetching remote version signature from GitHub API..." -ForegroundColor Yellow
+    $headers = @{ "User-Agent" = "CodexMonitor-Bootstrap" }
+    $response = Invoke-RestMethod -Uri "https://api.github.com/repos/molthun/codex-monitor/commits/main" -Headers $headers -TimeoutSec 10
+    $remoteSha = $response.sha
+    if ($remoteSha) {
+        Set-Content -LiteralPath (Join-Path $installDir ".local_version") -Value $remoteSha.Trim() -Encoding UTF8
+    }
+} catch {
+    Write-Warning "Failed to query latest SHA signature: $_. Version tracking will initialize on the next run."
+}
+
+# Clean up temp files
+Remove-Item -LiteralPath $tempZip -Force
+Remove-Item -LiteralPath $tempExtract -Recurse -Force
+
+Write-Host "Repository downloaded and staged at $installDir!" -ForegroundColor Green
 
 # Run the setup script in the cloned directory
 $setupScript = Join-Path $installDir "Deploy\Setup-CodexMonitor.ps1"
