@@ -37,4 +37,3 @@ docs/LOCAL_SETUP.md
 *.local.json
 *.local.ps1
 .local_version
-

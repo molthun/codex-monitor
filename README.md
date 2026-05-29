@@ -59,8 +59,8 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; irm https://raw.githubusercont
 
 This bootstrap command will:
 1. Request **Administrator** elevation.
-2. Verify and install **Git** (using `winget`) and update the path so it is immediately usable.
-3. Clone the repository directly from GitHub to `C:\CodexMonitor`.
+2. Download the latest public source ZIP from GitHub to `C:\CodexMonitor`.
+3. Save a local version marker so future background updates can compare against GitHub.
 4. Hand off execution to the main installer (`Setup-CodexMonitor.ps1`), which will:
    - Detect and install all remaining prerequisites (**Rainmeter** and the **.NET 10 SDK/Runtime**) using `winget`.
    - Run the interactive **Configuration Wizard** (`Configure-CodexMonitor.ps1`) to choose widget scaling (Auto, 1080p, 4K), choose which local disk drives to display, and set up network interface exclusions.
@@ -126,7 +126,7 @@ Start-ScheduledTask -TaskName "CodexMonitor Bridge Elevated"
 
 ## Upgrading Prerequisites
 
-The background display watcher checks for available updates to core third-party dependencies (Rainmeter, Git, and the .NET SDK) once every 24 hours. If any updates are found, a Windows GUI prompt will appear. Clicking **Yes** will automatically perform the updates safely (closing applications to prevent file locks, running `winget` silently, and restarting everything cleanly).
+The background display watcher checks for available updates to core third-party dependencies (Rainmeter and the .NET SDK) once every 24 hours. If any updates are found, a Windows GUI prompt will appear. Clicking **Yes** will automatically perform the updates safely (closing applications to prevent file locks, running `winget` silently, and restarting everything cleanly).
 
 You can also trigger this update manually at any time by running:
 

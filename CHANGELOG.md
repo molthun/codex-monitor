@@ -2,6 +2,7 @@
 
 ## 2026-05-29
 
+- Removed the end-user Git dependency from the bootstrap/update path by using GitHub API version checks and ZIP downloads, while preserving local `config.json`.
 - Updated installer, documentation, sensor contract, skin metadata, and public config to reflect direct LibreHardwareMonitor sensor telemetry; CodexMonitor now clearly presents itself as display-only and does not manage fan behavior.
 - Integrated `LibreHardwareMonitorLib` directly into the C# project to query CPU, GPU, and motherboard sensors natively. The bridge is now fully autonomous and reads hardware telemetry itself.
 - Updated `Install-CodexMonitor.ps1` and `Watch-PrimaryDisplay.ps1` to compile the bridge using `dotnet publish` (with `-r win-x64` and `--self-contained false`) to copy all required NuGet DLL files (`LibreHardwareMonitorLib.dll`, etc.) to the target directory.

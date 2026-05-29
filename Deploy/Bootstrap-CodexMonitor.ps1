@@ -1,5 +1,5 @@
 # CodexMonitor GitHub Bootstrap Launcher
-# This script ensures Git is installed, clones the repository, and runs the main setup.
+# This script downloads the public GitHub source ZIP and runs the main setup.
 
 $ErrorActionPreference = "Stop"
 

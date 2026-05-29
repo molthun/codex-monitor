@@ -31,12 +31,12 @@ This document provides a systematic analysis of CodexMonitor's current third-par
 
 ---
 
-## 4. Git (Background Auto-Updater)
-* **Purpose**: The background watcher uses Git to pull code updates and rebuild the bridge when a new version is pushed to GitHub.
+## 4. GitHub ZIP Updater (Background Auto-Updater)
+* **Current implementation**: The background watcher checks the GitHub commits API, downloads the latest `main` ZIP archive when the remote SHA changes, preserves the user's local `config.json`, rebuilds the bridge, and refreshes Rainmeter.
 * **Alternatives**:
-  * **GitHub Release Updater**: Modify the watcher to check the GitHub Release API via PowerShell (`Invoke-RestMethod`), download the latest release ZIP, and extract it to the target folder.
-* **Simplification Effort**: **Medium** (requires rewriting the updater to use ZIP extraction instead of git pull).
-* **Stability Impact**: **High**. Removes the need for installing Git on the client machine. Git would only be needed by developers, not end-users.
+  * **GitHub Release Updater**: Check versioned GitHub Releases instead of the moving `main` branch.
+* **Simplification Effort**: **Done** for branch ZIP updates; **Medium** if moving to formal releases later.
+* **Stability Impact**: **High**. Git is no longer required on the client machine. Git is only needed by developers.
 
 ---
 
@@ -45,6 +45,6 @@ This document provides a systematic analysis of CodexMonitor's current third-par
 | Dependency | Current Role | Recommendation for Stability & Simplicity | Effort |
 | :--- | :--- | :--- | :--- |
 | **.NET 10 SDK/Runtime** | Code compilation & execution | **Native AOT (Self-Contained Executable)**: Distribute the compiled `.exe` directly. Eliminates .NET install requirement. | **Low** |
-| **Git** | Code pulls & updates | **ZIP Archive Release API**: Download latest ZIPs from GitHub instead of running `git pull`. Eliminates Git client requirement. | **Medium** |
+| **GitHub ZIP updater** | Code updates | **Current path**: download latest ZIPs from GitHub instead of invoking Git on the client. Eliminates Git client requirement. | **Done** |
 | **LibreHardwareMonitorLib** | CPU/GPU/Fan RPM data | **Current path**: query hardware directly in `CodexBridge`. CodexMonitor displays current state only. | **Done** |
 | **Rainmeter** | Render widget panels | **WPF / WinUI Custom App**: Rebuild the UI as a native C# borderless app. Eliminates Rainmeter requirement. | **High** |

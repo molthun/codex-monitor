@@ -99,7 +99,7 @@ function Check-ForUpdates {
         }
 
         if ($local -ne $remote) {
-            Write-Host "New version found (Local: $local, Remote: $remote). Pulling updates..."
+            Write-Host "New version found (Local: $local, Remote: $remote). Downloading updates..."
             Show-Notification "CodexMonitor Update" "Installing the latest updates from GitHub..."
 
             $zipUrl = "https://github.com/molthun/codex-monitor/archive/refs/heads/main.zip"
