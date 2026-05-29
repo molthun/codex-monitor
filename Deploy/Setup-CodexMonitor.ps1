@@ -63,6 +63,16 @@ if ((Test-Command "git") -and (Test-Path -LiteralPath (Join-Path $projectRoot ".
 
 Install-WingetPackage -Id "Rainmeter.Rainmeter" -Name "Rainmeter"
 
+# Install .NET 10 SDK/Runtime if not present
+$hasSdk10 = $false
+if (Test-Command "dotnet") {
+    $hasSdk10 = [bool](dotnet --list-sdks | Select-String -Pattern "^10\.")
+}
+if (-not $hasSdk10) {
+    Install-WingetPackage -Id "Microsoft.DotNet.SDK.10" -Name ".NET 10 SDK"
+} else {
+    Write-Host ".NET 10 SDK is already installed." -ForegroundColor Green
+}
 
 Write-Host ""
 Write-Host "CodexMonitor reads hardware sensors directly through LibreHardwareMonitor and does not control fan behavior." -ForegroundColor Green

@@ -150,7 +150,15 @@ function Check-ForUpdates {
 
             Set-Content -LiteralPath $versionFile -Value $remote -Encoding UTF8
 
-            # Rebuild step is no longer needed as the binary is precompiled and included in the ZIP payload.
+            # Rebuild the bridge
+            if (Test-Command "dotnet") {
+                $bridgeProj = Join-Path $InstallRoot "CodexBridge\CodexBridge.csproj"
+                $outDir = Join-Path $InstallRoot "CodexBridge\bin\Release\net10.0"
+                Invoke-CheckedCommand -Description "CodexBridge publish" -Command { dotnet publish $bridgeProj -c Release -r win-x64 --self-contained false -o $outDir }
+            }
+            else {
+                throw "The .NET SDK is not available, so CodexBridge could not be rebuilt."
+            }
 
             # Copy updated presets/payload to the active Rainmeter skin target
             $skinPath = Get-RainmeterSkinPath
