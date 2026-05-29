@@ -55,7 +55,7 @@ namespace CodexBridge
         private void InitializeComponent()
         {
             Text = "CodexMonitor Settings";
-            ClientSize = new Size(720, 760);
+            ClientSize = new Size(760, 840);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -67,13 +67,13 @@ namespace CodexBridge
             var header = new Panel
             {
                 Location = new Point(0, 0),
-                Size = new Size(720, 96),
+                Size = new Size(760, 96),
                 BackColor = Color.FromArgb(12, 16, 21)
             };
             header.Paint += (s, e) =>
             {
                 using var accentPen = new Pen(Accent, 2);
-                e.Graphics.DrawLine(accentPen, 0, 94, 720, 94);
+                e.Graphics.DrawLine(accentPen, 0, 94, 760, 94);
             };
 
             var title = new Label
@@ -88,7 +88,7 @@ namespace CodexBridge
             {
                 Text = "Choose what the desktop widget displays. CodexMonitor only monitors hardware; fan control stays with your BIOS, drivers, or existing tools.",
                 Location = new Point(24, 50),
-                Size = new Size(660, 38),
+                Size = new Size(700, 38),
                 Font = new Font("Segoe UI", 9.25f, FontStyle.Regular),
                 ForeColor = TextMuted
             };
@@ -99,12 +99,12 @@ namespace CodexBridge
             var body = new Panel
             {
                 Location = new Point(0, 96),
-                Size = new Size(720, 600),
+                Size = new Size(760, 680),
                 BackColor = Back
             };
             Controls.Add(body);
 
-            var profile = CreateCard(24, 18, 672, 96, "Widget size", "Auto follows the primary display. Use a fixed size only if you prefer a specific layout.");
+            var profile = CreateCard(28, 18, 704, 96, "Widget size", "Auto follows the primary display. Use a fixed size only if you prefer a specific layout.");
             _rdoAuto = CreateRadio("Auto, recommended", 18, 50, 160, true);
             _rdo1080p = CreateRadio("Compact 1080p", 240, 50, 150, false);
             _rdo4K = CreateRadio("Large 4K", 460, 50, 120, false);
@@ -113,41 +113,43 @@ namespace CodexBridge
             profile.Controls.Add(_rdo4K);
             body.Controls.Add(profile);
 
-            var drives = CreateCard(24, 126, 672, 138, "Disk rows", "These drives are detected on this PC. A different PC will show its own local drives.");
+            var drives = CreateCard(28, 128, 704, 158, "Disk rows", "These drives are detected on this PC. A different PC will show its own local drives.");
             _pnlDrives = new FlowLayoutPanel
             {
-                Location = new Point(18, 58),
-                Size = new Size(636, 68),
+                Location = new Point(18, 60),
+                Size = new Size(668, 82),
                 AutoScroll = true,
                 BackColor = Color.Transparent,
                 FlowDirection = FlowDirection.TopDown,
-                WrapContents = false
+                WrapContents = false,
+                Padding = new Padding(0, 4, 0, 0)
             };
             drives.Controls.Add(_pnlDrives);
             body.Controls.Add(drives);
 
-            var network = CreateCard(24, 276, 672, 240, "Network display", "Choose how active adapters are counted. Use Ignore for virtual, VPN, Bluetooth, or test adapters.");
+            var network = CreateCard(28, 300, 704, 280, "Network display", "Choose how active adapters are counted. Use Ignore for virtual, VPN, Bluetooth, or test adapters.");
             _pnlNetworkAdapters = new FlowLayoutPanel
             {
-                Location = new Point(18, 58),
-                Size = new Size(636, 112),
+                Location = new Point(18, 60),
+                Size = new Size(668, 144),
                 AutoScroll = true,
                 BackColor = Color.Transparent,
                 FlowDirection = FlowDirection.TopDown,
-                WrapContents = false
+                WrapContents = false,
+                Padding = new Padding(0, 4, 0, 0)
             };
             var advancedNetworkLabel = new Label
             {
                 Text = "Advanced ignore words",
-                Location = new Point(18, 178),
+                Location = new Point(18, 214),
                 Size = new Size(180, 20),
                 ForeColor = TextMuted,
                 Font = new Font("Segoe UI", 8.25f, FontStyle.Regular)
             };
             _txtNetworkExclusions = new TextBox
             {
-                Location = new Point(18, 202),
-                Size = new Size(636, 25),
+                Location = new Point(18, 238),
+                Size = new Size(668, 25),
                 BackColor = Color.FromArgb(38, 44, 50),
                 ForeColor = TextMain,
                 BorderStyle = BorderStyle.FixedSingle
@@ -157,7 +159,7 @@ namespace CodexBridge
             network.Controls.Add(_txtNetworkExclusions);
             body.Controls.Add(network);
 
-            var update = CreateCard(24, 528, 672, 84, "Updates and sensor refresh", "Background updates download the latest widget files from GitHub. Sensor refresh controls how often telemetry is written.");
+            var update = CreateCard(28, 594, 704, 84, "Updates and sensor refresh", "Background updates download the latest widget files from GitHub. Sensor refresh controls how often telemetry is written.");
             _chkAutoUpdate = new CheckBox
             {
                 Text = "Keep CodexMonitor updated automatically",
@@ -169,13 +171,13 @@ namespace CodexBridge
             var rateLabel = new Label
             {
                 Text = "Sensor refresh:",
-                Location = new Point(440, 53),
+                Location = new Point(472, 53),
                 Size = new Size(100, 22),
                 ForeColor = TextMain
             };
             _cmbUpdateRate = new ComboBox
             {
-                Location = new Point(546, 49),
+                Location = new Point(578, 49),
                 Size = new Size(108, 25),
                 DropDownStyle = ComboBoxStyle.DropDownList,
                 BackColor = Color.FromArgb(38, 44, 50),
@@ -191,20 +193,20 @@ namespace CodexBridge
 
             var footer = new Panel
             {
-                Location = new Point(0, 696),
-                Size = new Size(720, 64),
+                Location = new Point(0, 776),
+                Size = new Size(760, 64),
                 BackColor = Color.FromArgb(12, 16, 21)
             };
             footer.Paint += (s, e) =>
             {
                 using var pen = new Pen(Border, 1);
-                e.Graphics.DrawLine(pen, 0, 0, 720, 0);
+                e.Graphics.DrawLine(pen, 0, 0, 760, 0);
             };
             _lblApplyStatus = new Label
             {
                 Text = "Changes are saved to your local config.json and applied to the running widget.",
                 Location = new Point(24, 22),
-                Size = new Size(430, 24),
+                Size = new Size(470, 24),
                 ForeColor = TextMuted,
                 Font = new Font("Segoe UI", 8.4f, FontStyle.Regular)
             };
@@ -212,7 +214,7 @@ namespace CodexBridge
             {
                 Text = "Save and apply",
                 Size = new Size(132, 34),
-                Location = new Point(450, 15),
+                Location = new Point(490, 15),
                 BackColor = Accent,
                 ForeColor = Color.FromArgb(6, 12, 16),
                 FlatStyle = FlatStyle.Flat,
@@ -228,7 +230,7 @@ namespace CodexBridge
             {
                 Text = "Cancel",
                 Size = new Size(92, 34),
-                Location = new Point(600, 15),
+                Location = new Point(640, 15),
                 BackColor = Color.FromArgb(43, 49, 56),
                 ForeColor = TextMain,
                 FlatStyle = FlatStyle.Flat,
@@ -313,8 +315,8 @@ namespace CodexBridge
                 {
                     Text = infoText,
                     Tag = rawPrefix,
-                    Size = new Size(600, 25),
-                    Margin = new Padding(0, 2, 0, 2),
+                    Size = new Size(632, 25),
+                    Margin = new Padding(0, 0, 0, 4),
                     ForeColor = TextMain
                 });
             }
@@ -560,8 +562,8 @@ namespace CodexBridge
             {
                 var row = new Panel
                 {
-                    Size = new Size(612, 32),
-                    Margin = new Padding(0, 0, 0, 4),
+                    Size = new Size(640, 34),
+                    Margin = new Padding(0, 0, 0, 5),
                     BackColor = Color.Transparent,
                     Tag = adapter
                 };
@@ -569,15 +571,15 @@ namespace CodexBridge
                 {
                     Text = adapter.Name,
                     Location = new Point(0, 4),
-                    Size = new Size(390, 24),
+                    Size = new Size(420, 24),
                     AutoEllipsis = true,
                     ForeColor = TextMain,
                     Font = new Font("Segoe UI", 8.8f, FontStyle.Regular)
                 };
                 var role = new ComboBox
                 {
-                    Location = new Point(430, 2),
-                    Size = new Size(170, 25),
+                    Location = new Point(452, 2),
+                    Size = new Size(176, 25),
                     DropDownStyle = ComboBoxStyle.DropDownList,
                     BackColor = Color.FromArgb(38, 44, 50),
                     ForeColor = TextMain,
