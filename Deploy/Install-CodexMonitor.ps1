@@ -209,7 +209,11 @@ if (-not (Test-Path -LiteralPath $bridgeExe)) {
 $sizeSwitcher = Join-Path $packageRoot "Switch-WidgetSize.ps1"
 if (Test-Path -LiteralPath $sizeSwitcher) {
     $profileMode = if ($config.profiles.default) { $config.profiles.default } else { "Auto" }
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sizeSwitcher -Mode $profileMode -InstallRoot $InstallRoot -ConfigPath $ConfigPath
+    if ($ConfigPath) {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sizeSwitcher -Mode $profileMode -InstallRoot $InstallRoot -ConfigPath $ConfigPath
+    } else {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sizeSwitcher -Mode $profileMode -InstallRoot $InstallRoot
+    }
 }
 
 if (-not (Test-Path -LiteralPath (Join-Path $skinResourcesTarget "temps.txt"))) {
