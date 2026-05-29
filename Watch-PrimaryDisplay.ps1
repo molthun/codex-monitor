@@ -200,7 +200,7 @@ function Check-ForPrerequisiteUpdates {
     if (-not (Test-Command "winget")) { return }
 
     try {
-        $packageIds = @("Rainmeter.Rainmeter", "Microsoft.DotNet.SDK.10")
+        $packageIds = @("Rainmeter.Rainmeter")
         $foundUpdates = @()
 
         $output = winget list --upgrade-available 2>$null

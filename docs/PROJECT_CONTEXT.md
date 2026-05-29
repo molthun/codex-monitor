@@ -49,7 +49,7 @@ This project targets Windows + Rainmeter + LibreHardwareMonitor:
 
 - Windows 11 or newer is recommended.
 - Rainmeter 4.5.x or newer.
-- .NET 10 SDK/runtime for source-based install and bridge execution.
+- The bundled self-contained `CodexBridge.exe`; developers need the .NET SDK only to rebuild it from source.
 - NVIDIA driver with `nvidia-smi.exe` if NVIDIA GPU fallback data is desired.
 - CodexMonitor is display-only. Fan behavior remains under the user's BIOS/UEFI, drivers, or existing system tools.
 
@@ -91,10 +91,10 @@ Bridge source:
 C:\CodexMonitor\CodexBridge\Program.cs
 ```
 
-Bridge executable after build:
+Bundled bridge executable:
 
 ```text
-C:\CodexMonitor\CodexBridge\bin\Release\net10.0\CodexBridge.exe
+C:\CodexMonitor\CodexBridge\CodexBridge.exe
 ```
 
 Rainmeter active skin location depends on the user's Rainmeter `SkinPath`. The installer reads it from:

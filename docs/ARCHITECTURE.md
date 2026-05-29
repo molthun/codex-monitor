@@ -6,7 +6,7 @@
 LibreHardwareMonitor sensors
         |
         v
-C:\CodexMonitor\CodexBridge\bin\Release\net10.0\CodexBridge.exe
+C:\CodexMonitor\CodexBridge\CodexBridge.exe
         |
         v
 C:\CodexMonitor\@Resources\temps.txt
@@ -56,6 +56,14 @@ Target framework:
 ```text
 net10.0
 ```
+
+User installs use the bundled self-contained Windows executable from:
+
+```text
+C:\CodexMonitor\Deploy\Payload\CodexBridge\CodexBridge.exe
+```
+
+Developers need the .NET SDK only when changing and rebuilding `CodexBridge`.
 
 Main file:
 
@@ -176,7 +184,6 @@ File:
 Installs with `winget`:
 
 - Rainmeter;
-- .NET 10 Desktop Runtime.
 
 Then runs the restore script.
 

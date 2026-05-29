@@ -22,12 +22,12 @@ This document provides a systematic analysis of CodexMonitor's current third-par
 
 ---
 
-## 3. .NET 10 SDK & Runtime (Development & Execution)
-* **Purpose**: The SDK compiles `CodexBridge` from source, and the runtime executes the compiled `CodexBridge.exe` binary.
+## 3. .NET SDK (Development Only)
+* **Current implementation**: Users receive a bundled self-contained `CodexBridge.exe`. The .NET SDK is only needed by developers who change bridge source code and rebuild the executable.
 * **Alternatives**:
-  * **Self-Contained Native AOT Compilation**: Compile the C# bridge project into a **Native AOT (Ahead-of-Time)** self-contained executable.
-* **Simplification Effort**: **Low** (requires updating the `.csproj` file with AOT publish properties).
-* **Stability Impact**: **High**. The user will no longer need to install the .NET 10 SDK or .NET Runtime on their computer. The bridge compiles into a single, standalone native `.exe` that runs with zero external dependencies.
+  * **Native AOT**: Compile the bridge as a smaller ahead-of-time native executable if LibreHardwareMonitor compatibility allows it.
+* **Simplification Effort**: **Done** for self-contained single-file publish; **Medium** if moving to Native AOT later.
+* **Stability Impact**: **High**. End users no longer need to install the .NET SDK or runtime on their computer.
 
 ---
 
@@ -44,7 +44,7 @@ This document provides a systematic analysis of CodexMonitor's current third-par
 
 | Dependency | Current Role | Recommendation for Stability & Simplicity | Effort |
 | :--- | :--- | :--- | :--- |
-| **.NET 10 SDK/Runtime** | Code compilation & execution | **Native AOT (Self-Contained Executable)**: Distribute the compiled `.exe` directly. Eliminates .NET install requirement. | **Low** |
+| **.NET SDK** | Developer rebuilds only | **Current path**: distribute the compiled self-contained `.exe`. Eliminates end-user .NET install requirement. | **Done** |
 | **GitHub ZIP updater** | Code updates | **Current path**: download latest ZIPs from GitHub instead of invoking Git on the client. Eliminates Git client requirement. | **Done** |
 | **LibreHardwareMonitorLib** | CPU/GPU/Fan RPM data | **Current path**: query hardware directly in `CodexBridge`. CodexMonitor displays current state only. | **Done** |
 | **Rainmeter** | Render widget panels | **WPF / WinUI Custom App**: Rebuild the UI as a native C# borderless app. Eliminates Rainmeter requirement. | **High** |

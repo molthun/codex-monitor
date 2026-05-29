@@ -1,7 +1,3 @@
-param(
-    [switch]$SkipDotNet
-)
-
 $ErrorActionPreference = "Stop"
 
 function Test-Command {
@@ -25,21 +21,6 @@ if (-not (Test-Command "winget")) {
 }
 
 Install-WingetPackage -Id "Rainmeter.Rainmeter" -Name "Rainmeter"
-
-if (-not $SkipDotNet) {
-    $hasSdk10 = $false
-    if (Test-Command "dotnet") {
-        $hasSdk10 = [bool](dotnet --list-sdks | Select-String -Pattern "^10\.")
-    }
-
-    if (-not $hasSdk10) {
-        Install-WingetPackage -Id "Microsoft.DotNet.SDK.10" -Name ".NET 10 SDK"
-    }
-    else {
-        Write-Host ""
-        Write-Host ".NET 10 SDK is already installed."
-    }
-}
 
 Write-Host ""
 Write-Host "CodexMonitor reads sensor telemetry directly through LibreHardwareMonitor and does not control fan behavior."

@@ -97,10 +97,10 @@ C:\CodexMonitor\CodexBridge\Program.cs
 Build:
 
 ```powershell
-dotnet build "C:\CodexMonitor\CodexBridge\CodexBridge.csproj" -c Release
+dotnet publish "C:\CodexMonitor\CodexBridge\CodexBridge.csproj" -c Release -r win-x64 --self-contained true -o "C:\CodexMonitor\Deploy\Payload\CodexBridge"
 ```
 
-The installer also builds the bridge automatically if `CodexBridge.exe` is missing.
+The installer expects the bundled self-contained `Deploy\Payload\CodexBridge\CodexBridge.exe` to exist. Rebuild it before committing bridge source changes.
 
 Restart bridge:
 

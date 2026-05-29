@@ -90,13 +90,13 @@ The output of the bridge is customizable via the workstation's `config.json`:
 Dump LibreHardwareMonitor sensors:
 
 ```powershell
-& "C:\CodexMonitor\CodexBridge\bin\Release\net10.0\CodexBridge.exe" --dump
+& "C:\CodexMonitor\CodexBridge\CodexBridge.exe" --dump
 ```
 
 Run once:
 
 ```powershell
-& "C:\CodexMonitor\CodexBridge\bin\Release\net10.0\CodexBridge.exe" --once
+& "C:\CodexMonitor\CodexBridge\CodexBridge.exe" --once
 ```
 
 Read current output:

@@ -2,17 +2,18 @@
 
 ## 2026-05-29
 
+- Bundled `CodexBridge.exe` as a self-contained single-file executable so end users no longer need Git or the .NET SDK/runtime to install or update CodexMonitor.
 - Removed the end-user Git dependency from the bootstrap/update path by using GitHub API version checks and ZIP downloads, while preserving local `config.json`.
 - Updated installer, documentation, sensor contract, skin metadata, and public config to reflect direct LibreHardwareMonitor sensor telemetry; CodexMonitor now clearly presents itself as display-only and does not manage fan behavior.
 - Integrated `LibreHardwareMonitorLib` directly into the C# project to query CPU, GPU, and motherboard sensors natively. The bridge is now fully autonomous and reads hardware telemetry itself.
-- Updated `Install-CodexMonitor.ps1` and `Watch-PrimaryDisplay.ps1` to compile the bridge using `dotnet publish` (with `-r win-x64` and `--self-contained false`) to copy all required NuGet DLL files (`LibreHardwareMonitorLib.dll`, etc.) to the target directory.
+- Updated `Install-CodexMonitor.ps1` and `Watch-PrimaryDisplay.ps1` to deploy the bundled bridge executable from the GitHub ZIP without rebuilding on the client.
 - Created `docs/DEPENDENCY_ANALYSIS.md` evaluating third-party dependencies and documenting simplification strategies.
 - Made background Git auto-update failures visible to users with Windows notifications instead of silently swallowing failed fetch, pull, build, copy, task restart, or Rainmeter refresh steps.
 - Created a dependency upgrade helper script `Deploy/Upgrade-Prerequisites-And-Apps.ps1` to stop active services safely, perform `winget` upgrades, and restore executing widgets. Added an `-Auto` switch to close the console automatically when done.
 - Added daily winget upgrade checks in `Watch-PrimaryDisplay.ps1` that display an interactive GUI prompt to automatically run updates without manual terminal commands.
 - Created a GitHub bootstrap script `Deploy/Bootstrap-CodexMonitor.ps1` to clone the repository and run the setup cleanly from GitHub using a single PowerShell one-liner.
 - Added Git as a core prerequisite dependency in `Setup-CodexMonitor.ps1` and implemented session PATH updating to ensure commands run immediately upon install.
-- Added a unified `Setup-CodexMonitor.ps1` self-elevating setup manager script to automatically check and install prerequisites (Rainmeter and .NET 10 SDK/Runtime) via `winget`.
+- Added a unified `Setup-CodexMonitor.ps1` self-elevating setup manager script to automatically check and install prerequisites via `winget`.
 - Created an interactive `Configure-CodexMonitor.ps1` CLI configuration wizard to dynamically scan local disk drives and network adapters, guide profile choices, and save system configurations to `config.json` without manual text editing.
 - Integrated a background Git auto-updater loop inside `Watch-PrimaryDisplay.ps1` to pull remote Git updates, automatically rebuild the C# bridge, and reload the widget every 6 hours.
 - Synchronized the root and payload default skins with the 1080p preset, preserving variable-based health background sizing, and made 4K section icons use the committed PNG assets consistently.
@@ -32,7 +33,7 @@
 - Split public project documentation from ignored local machine setup.
 - Changed config model to one local working `config.json`, created from committed `config.example.json`.
 - Installer, size switcher, display watcher, and bridge now read JSON config.
-- Installer can build `CodexBridge.exe` from source when the binary is missing.
+- Installer deploys the bundled `CodexBridge.exe`.
 - Added developer documentation set:
   - `README.md`
   - `docs\PROJECT_CONTEXT.md`

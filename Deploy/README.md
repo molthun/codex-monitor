@@ -5,7 +5,7 @@ This folder contains everything needed to restore the Rainmeter desktop monitor 
 ## What is included
 
 - `Payload\RainmeterSkin\CodexMonitor\CodexMonitor.ini` - active Rainmeter skin.
-- `Payload\CodexBridge\` - .NET bridge source and current Release build.
+- `Payload\CodexBridge\` - bridge source plus the bundled self-contained `CodexBridge.exe`.
 - `Payload\@Resources\temps.example.txt` - placeholder sensor output file.
 - `Payload\RainmeterLayout-CodexMonitor.ini` - current Rainmeter placement and desktop behavior.
 - `Install-CodexMonitor.ps1` - install/restore script.
@@ -18,8 +18,7 @@ Install these first:
 
 1. Rainmeter 4.5.x or newer.
 2. NVIDIA driver with `nvidia-smi.exe` if NVIDIA GPU fallback data is desired.
-3. .NET 10 Desktop Runtime if the bridge does not start.
-4. Fan behavior is managed outside CodexMonitor by the user's BIOS/UEFI, drivers, or existing system tools.
+3. Fan behavior is managed outside CodexMonitor by the user's BIOS/UEFI, drivers, or existing system tools.
 
 The bridge reads CPU/GPU/fan values directly through LibreHardwareMonitor. CodexMonitor displays current state only and does not control fan behavior.
 

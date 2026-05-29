@@ -12,6 +12,7 @@ Backups/
 Presets/*.small.ini
 
 # .NET build output
+CodexBridge/CodexBridge.exe
 CodexBridge/bin/
 CodexBridge/obj/
 Deploy/Payload/CodexBridge/bin/
