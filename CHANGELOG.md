@@ -2,6 +2,8 @@
 
 ## 2026-05-29
 
+- Added a graphical WinForms settings wizard hosted by `CodexBridge.exe --settings`; `Configure-CodexMonitor.ps1` now launches that GUI instead of running the older console prompts.
+- Fixed `--once` bridge mode after the settings wizard integration so one-shot runs write `temps.txt` instead of entering sensor dump mode.
 - Bundled `CodexBridge.exe` as a self-contained single-file executable so end users no longer need Git or the .NET SDK/runtime to install or update CodexMonitor.
 - Removed the end-user Git dependency from the bootstrap/update path by using GitHub API version checks and ZIP downloads, while preserving local `config.json`.
 - Updated installer, documentation, sensor contract, skin metadata, and public config to reflect direct LibreHardwareMonitor sensor telemetry; CodexMonitor now clearly presents itself as display-only and does not manage fan behavior.
@@ -14,7 +16,7 @@
 - Created a GitHub bootstrap script `Deploy/Bootstrap-CodexMonitor.ps1` to clone the repository and run the setup cleanly from GitHub using a single PowerShell one-liner.
 - Added Git as a core prerequisite dependency in `Setup-CodexMonitor.ps1` and implemented session PATH updating to ensure commands run immediately upon install.
 - Added a unified `Setup-CodexMonitor.ps1` self-elevating setup manager script to automatically check and install prerequisites via `winget`.
-- Created an interactive `Configure-CodexMonitor.ps1` CLI configuration wizard to dynamically scan local disk drives and network adapters, guide profile choices, and save system configurations to `config.json` without manual text editing.
+- Created an early interactive `Configure-CodexMonitor.ps1` configuration wizard, later replaced by the graphical settings wizard.
 - Integrated a background Git auto-updater loop inside `Watch-PrimaryDisplay.ps1` to pull remote Git updates, automatically rebuild the C# bridge, and reload the widget every 6 hours.
 - Synchronized the root and payload default skins with the 1080p preset, preserving variable-based health background sizing, and made 4K section icons use the committed PNG assets consistently.
 - Updated the display watcher to switch automatically between 1080p and 4K profiles when the primary display height changes.

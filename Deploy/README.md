@@ -9,6 +9,7 @@ This folder contains everything needed to restore the Rainmeter desktop monitor 
 - `Payload\@Resources\temps.example.txt` - placeholder sensor output file.
 - `Payload\RainmeterLayout-CodexMonitor.ini` - current Rainmeter placement and desktop behavior.
 - `Install-CodexMonitor.ps1` - install/restore script.
+- `Configure-CodexMonitor.ps1` - launches the graphical settings wizard through `CodexBridge.exe --settings`.
 - `Backup-CodexMonitor.ps1` - creates a timestamped backup zip.
 - `Uninstall-CodexMonitor.ps1` - removes the scheduled task and optionally files.
 
@@ -34,6 +35,7 @@ The installer will:
 
 - copy the bridge to `C:\CodexMonitor\CodexBridge`;
 - copy the skin to the current Rainmeter `SkinPath`;
+- create/update `config.json` through the graphical settings wizard;
 - create/update the elevated scheduled task `CodexMonitor Bridge Elevated`;
 - restore the `[CodexMonitor]` Rainmeter desktop settings;
 - start the bridge and refresh/activate the Rainmeter skin.

@@ -12,7 +12,7 @@ The widget is intentionally configured as part of the desktop, not as an always-
 - Bridge scheduled task: `CodexMonitor Bridge Elevated`
 - Display watcher: `C:\CodexMonitor\Watch-PrimaryDisplay.ps1`
 - Optional local staging/reinstall kit: `<LocalStagingFolder>`
-- Planned source of truth for collaboration: GitHub repository
+- Source of truth for collaboration: GitHub repository
 
 ## Main Features
 
@@ -26,6 +26,7 @@ The widget is intentionally configured as part of the desktop, not as an always-
 - Disk used/free bars for C:, D:, E:.
 - Automatic 1080p/4K skin profile selection.
 - Automatic positioning on the current primary monitor.
+- Graphical settings wizard for profile, disk, network, telemetry, and update options.
 
 ## Required Software
 
@@ -62,7 +63,7 @@ This bootstrap command will:
 3. Save a local version marker so future background updates can compare against GitHub.
 4. Hand off execution to the main installer (`Setup-CodexMonitor.ps1`), which will:
    - Detect and install all remaining prerequisites (**Rainmeter**) using `winget`.
-   - Run the interactive **Configuration Wizard** (`Configure-CodexMonitor.ps1`) to choose widget scaling (Auto, 1080p, 4K), choose which local disk drives to display, and set up network interface exclusions.
+   - Run the graphical **Configuration Wizard** (`Configure-CodexMonitor.ps1`, backed by `CodexBridge.exe --settings`) to choose widget scaling (Auto, 1080p, 4K), choose which local disk drives to display, set network interface exclusions, and configure update behavior.
    - Copy the bundled bridge executable, configure the startup shortcut, register the elevated scheduled tasks, configure active `Rainmeter.ini` layout/coordinates, and load/activate the CodexMonitor skin.
 
 ## Source Of Truth
@@ -75,7 +76,7 @@ Going forward, GitHub should be the primary source of truth for developers:
 - project documentation;
 - changelog.
 
-Any local reinstall/staging folder is only a temporary recovery copy until the GitHub repo and release workflow are created. Do not treat a local zip archive as the canonical project state after GitHub is live.
+Any local reinstall/staging folder is only a recovery convenience. Do not treat a local zip archive as the canonical project state after GitHub is live.
 
 ## Quick Developer Orientation
 
@@ -95,6 +96,12 @@ Refresh the skin:
 
 ```powershell
 & "C:\Program Files\Rainmeter\Rainmeter.exe" !Refresh "CodexMonitor"
+```
+
+Open settings:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\CodexMonitor\Deploy\Configure-CodexMonitor.ps1"
 ```
 
 Switch profile automatically:

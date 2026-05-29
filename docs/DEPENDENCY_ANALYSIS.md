@@ -24,6 +24,7 @@ This document provides a systematic analysis of CodexMonitor's current third-par
 
 ## 3. .NET SDK (Development Only)
 * **Current implementation**: Users receive a bundled self-contained `CodexBridge.exe`. The .NET SDK is only needed by developers who change bridge source code and rebuild the executable.
+  The executable also hosts the WinForms settings wizard via `--settings`.
 * **Alternatives**:
   * **Native AOT**: Compile the bridge as a smaller ahead-of-time native executable if LibreHardwareMonitor compatibility allows it.
 * **Simplification Effort**: **Done** for self-contained single-file publish; **Medium** if moving to Native AOT later.

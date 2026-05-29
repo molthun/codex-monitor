@@ -51,6 +51,7 @@ Scripts read `config.json`. If it is missing, they fall back to `config.example.
 Current config consumers:
 
 - `Deploy\Install-CodexMonitor.ps1`
+- `Deploy\Configure-CodexMonitor.ps1`
 - `Deploy\Switch-WidgetSize.ps1`
 - `Watch-PrimaryDisplay.ps1`
 - `CodexBridge.exe`
@@ -92,6 +93,7 @@ Source:
 
 ```text
 C:\CodexMonitor\CodexBridge\Program.cs
+C:\CodexMonitor\CodexBridge\SettingsForm.cs
 ```
 
 Build:
@@ -101,6 +103,17 @@ dotnet publish "C:\CodexMonitor\CodexBridge\CodexBridge.csproj" -c Release -r wi
 ```
 
 The installer expects the bundled self-contained `Deploy\Payload\CodexBridge\CodexBridge.exe` to exist. Rebuild it before committing bridge source changes.
+
+Keep these bridge copies synchronized:
+
+```text
+C:\CodexMonitor\CodexBridge\Program.cs
+C:\CodexMonitor\CodexBridge\SettingsForm.cs
+C:\CodexMonitor\CodexBridge\CodexBridge.csproj
+C:\CodexMonitor\Deploy\Payload\CodexBridge\Program.cs
+C:\CodexMonitor\Deploy\Payload\CodexBridge\SettingsForm.cs
+C:\CodexMonitor\Deploy\Payload\CodexBridge\CodexBridge.csproj
+```
 
 Restart bridge:
 
@@ -112,7 +125,14 @@ Start-ScheduledTask -TaskName "CodexMonitor Bridge Elevated"
 Verify:
 
 ```powershell
+& "C:\CodexMonitor\Deploy\Payload\CodexBridge\CodexBridge.exe" --once --config "C:\CodexMonitor\config.json"
 Get-Content "C:\CodexMonitor\@Resources\temps.txt"
+```
+
+Open the settings wizard:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\CodexMonitor\Deploy\Configure-CodexMonitor.ps1"
 ```
 
 ## Updating Reinstall Kit
@@ -121,6 +141,7 @@ If maintaining a separate local restore folder, copy the changed files to that p
 
 ```powershell
 Copy-Item "C:\CodexMonitor\CodexBridge\Program.cs" "<LocalStagingFolder>\Deploy\Payload\CodexBridge\Program.cs" -Force
+Copy-Item "C:\CodexMonitor\CodexBridge\SettingsForm.cs" "<LocalStagingFolder>\Deploy\Payload\CodexBridge\SettingsForm.cs" -Force
 Copy-Item "C:\CodexMonitor\CodexBridge\CodexBridge.csproj" "<LocalStagingFolder>\Deploy\Payload\CodexBridge\CodexBridge.csproj" -Force
 Copy-Item "C:\CodexMonitor\Presets\CodexMonitor.1080p.ini" "<LocalStagingFolder>\Deploy\Payload\RainmeterSkin\CodexMonitor\CodexMonitor.1080p.ini" -Force
 Copy-Item "C:\CodexMonitor\Presets\CodexMonitor.4K.ini" "<LocalStagingFolder>\Deploy\Payload\RainmeterSkin\CodexMonitor\CodexMonitor.4K.ini" -Force

@@ -43,6 +43,8 @@ The widget shows:
 - per-disk read/write activity;
 - disk used/free space.
 
+The project also includes a graphical settings wizard for local setup. It updates the ignored `config.json`; it is not a fan-control tool and does not manage hardware behavior.
+
 ## Supported Environment
 
 This project targets Windows + Rainmeter + LibreHardwareMonitor:
@@ -67,6 +69,18 @@ C:\CodexMonitor\@Resources\temps.txt
 
 Rainmeter reads that file using `WebParser` measures.
 
+Local setup is handled by:
+
+```text
+C:\CodexMonitor\Deploy\Configure-CodexMonitor.ps1
+```
+
+That script launches:
+
+```text
+C:\CodexMonitor\CodexBridge\CodexBridge.exe --settings
+```
+
 ## Why This Architecture Exists
 
 Rainmeter stays simple by reading one flat text file. Direct hardware access is isolated inside the elevated .NET bridge, which uses LibreHardwareMonitor and falls back to `nvidia-smi.exe` for NVIDIA GPU temperature/fan percentage when available.
@@ -89,6 +103,7 @@ Bridge source:
 
 ```text
 C:\CodexMonitor\CodexBridge\Program.cs
+C:\CodexMonitor\CodexBridge\SettingsForm.cs
 ```
 
 Bundled bridge executable:

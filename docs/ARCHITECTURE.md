@@ -54,7 +54,7 @@ C:\CodexMonitor\CodexBridge
 Target framework:
 
 ```text
-net10.0
+net10.0-windows
 ```
 
 User installs use the bundled self-contained Windows executable from:
@@ -81,18 +81,44 @@ Responsibilities:
 - write `C:\CodexMonitor\@Resources\temps.txt` once per second;
 - read bridge output path, mutex, and update interval from JSON config;
 - preserve last values when possible during fallback.
+- launch the graphical settings wizard when started with `--settings`.
 
 Modes:
 
 - normal mode: runs forever;
 - `--once`: writes once and exits;
 - `--dump`: prints available LibreHardwareMonitor sensors and exits.
+- `--settings`: opens the WinForms settings wizard and exits when the window closes.
 
 Single-instance guard:
 
 ```text
 CodexMonitorHardwareBridge
 ```
+
+### Settings Wizard
+
+Launcher:
+
+```text
+C:\CodexMonitor\Deploy\Configure-CodexMonitor.ps1
+```
+
+Runtime entry point:
+
+```text
+C:\CodexMonitor\CodexBridge\CodexBridge.exe --settings --config C:\CodexMonitor\config.json
+```
+
+The PowerShell launcher prepares/updates the local `config.json`, locates the installed or payload bridge executable, and then starts the WinForms settings window. The wizard edits the local ignored config only; public defaults still belong in `config.example.json`.
+
+The wizard currently covers:
+
+- widget profile mode: Auto, 1080p, or 4K;
+- displayed disk drives;
+- network adapter ignore terms;
+- background update toggle;
+- bridge telemetry update interval.
 
 ### Rainmeter Skin
 
@@ -200,8 +226,8 @@ When changing the widget:
 
 1. Edit the intended source/preset.
 2. Apply it to the active skin.
-3. Copy changed files into the reinstall kit payload.
-4. Rebuild the reinstall zip.
+3. Keep root and payload copies synchronized.
+4. Rebuild `Deploy\Payload\CodexBridge\CodexBridge.exe` when bridge source or settings UI code changes.
 5. Update docs/changelog.
 
 ## Critical Rainmeter Detail
