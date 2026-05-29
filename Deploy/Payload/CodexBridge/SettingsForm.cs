@@ -139,28 +139,28 @@ namespace CodexBridge
             cardNetwork.Controls.Add(lblNetworkHelp);
             pnlBody.Controls.Add(cardNetwork);
 
-            // Card 4: Updates & Telemetry Rate
-            Panel cardAdvanced = CreateCard(20, 308, 440, 90);
-            Label lblAdvancedTitle = CreateCardTitle("4. Telemetry Update Rate & Updates", 15, 12);
+            // Card 4: Updates and Telemetry Rate
+            Panel cardAdvanced = CreateCard(20, 302, 440, 105);
+            Label lblAdvancedTitle = CreateCardTitle("4. Telemetry Update Rate and Updates", 15, 12);
             _chkAutoUpdate = new CheckBox
             {
                 Text = "Enable background automatic updates",
-                Location = new Point(15, 42),
-                Size = new Size(250, 25),
+                Location = new Point(15, 38),
+                Size = new Size(410, 25),
                 FlatStyle = FlatStyle.Flat,
                 Checked = true
             };
             Label lblRate = new Label
             {
-                Text = "Update interval (sec):",
-                Location = new Point(265, 44),
-                Size = new Size(125, 25),
+                Text = "Update interval (seconds):",
+                Location = new Point(15, 68),
+                Size = new Size(160, 25),
                 ForeColor = Color.White
             };
             _numUpdateRate = new NumericUpDown
             {
-                Location = new Point(380, 42),
-                Size = new Size(45, 25),
+                Location = new Point(180, 66),
+                Size = new Size(60, 25),
                 Minimum = 1,
                 Maximum = 60,
                 Value = 1,
@@ -271,8 +271,8 @@ namespace CodexBridge
                 var chk = new CheckBox
                 {
                     Text = drive,
-                    AutoSize = true,
-                    Margin = new Padding(0, 0, 15, 0),
+                    Size = new Size(50, 25),
+                    Margin = new Padding(0, 0, 10, 0),
                     ForeColor = Color.White,
                     FlatStyle = FlatStyle.Flat
                 };
