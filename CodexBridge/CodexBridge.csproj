@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="FanControl.IPC">
+      <HintPath>C:\Program Files (x86)\FanControl\FanControl.IPC.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Google.Protobuf">
+      <HintPath>C:\Program Files (x86)\FanControl\Google.Protobuf.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="Grpc.Core.Api">
+      <HintPath>C:\Program Files (x86)\FanControl\Grpc.Core.Api.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="GrpcDotNetNamedPipes">
+      <HintPath>C:\Program Files (x86)\FanControl\GrpcDotNetNamedPipes.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,66 @@
+{
+  "installRoot": "C:\\CodexMonitor",
+  "rainmeter": {
+    "skinPath": "",
+    "executable": "C:\\Program Files\\Rainmeter\\Rainmeter.exe",
+    "skinName": "CodexMonitor",
+    "skinFile": "CodexMonitor.ini",
+    "desktopMode": {
+      "alwaysOnTop": -2,
+      "draggable": 0,
+      "clickThrough": 1,
+      "savePosition": 0,
+      "autoSelectScreen": 0
+    }
+  },
+  "bridge": {
+    "taskName": "CodexMonitor Bridge Elevated",
+    "mutexName": "CodexMonitorFanControlBridge",
+    "outputFile": "C:\\CodexMonitor\\@Resources\\temps.txt",
+    "updateSeconds": 1
+  },
+  "display": {
+    "followPrimary": true,
+    "marginRight": 24,
+    "marginTop": 24,
+    "watchIntervalSeconds": 5,
+    "autoProfileHeightThreshold": 1440
+  },
+  "profiles": {
+    "auto": true,
+    "default": "Auto",
+    "compact": "1080p",
+    "large": "4K"
+  },
+  "disks": [
+    "C:",
+    "D:",
+    "E:"
+  ],
+  "network": {
+    "ignoreAdaptersContaining": [
+      "hyper-v",
+      "virtual switch",
+      "wsl",
+      "teredo",
+      "wan miniport",
+      "bluetooth"
+    ],
+    "wifiApNamesContaining": [
+      "wi-fi direct",
+      "wifi direct"
+    ],
+    "wifiNamesContaining": [
+      "wi-fi",
+      "wifi",
+      "wireless"
+    ],
+    "ethernetNamesContaining": [
+      "ethernet",
+      "intel"
+    ]
+  },
+  "startup": {
+    "watcherShortcutName": "CodexMonitor Display Watcher.lnk"
+  }
+}

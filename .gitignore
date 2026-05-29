@@ -1,0 +1,38 @@
+# Runtime data
+CodexBridge.error.log
+*.log
+@Resources/temps.txt
+@Resources/UpdateTemps.ps1
+
+# Backups and archives
+Backups/
+*.zip
+*.bak
+*.bak-*
+Presets/*.small.ini
+
+# .NET build output
+CodexBridge/bin/
+CodexBridge/obj/
+Deploy/Payload/CodexBridge/bin/
+Deploy/Payload/CodexBridge/obj/
+
+# Obsolete prototype collector
+CodexCollector.*
+
+# Local/editor noise
+.vs/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
+
+# Rainmeter/user-specific config
+Rainmeter.ini
+LOCAL_SETUP.md
+docs/LOCAL_SETUP.md
+*.local.md
+*.local.json
+config.local.json
+*.local.ps1
