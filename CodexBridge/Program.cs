@@ -76,10 +76,10 @@ do
             ?? sensors.FirstOrDefault(s => s.HardwareType == HardwareType.Cpu && s.Type == SensorType.Temperature);
         var cpuTemp = cpuTempSensor?.Value;
 
-        // 2. CPU Fan RPM (Usually under motherboard HardwareType as Fan)
-        var cpuFanSensor = sensors.FirstOrDefault(s => s.HardwareType == HardwareType.Motherboard && s.Type == SensorType.Fan && s.Name.Contains("CPU", StringComparison.OrdinalIgnoreCase))
+        // 2. CPU Fan RPM (Usually under motherboard/SuperIO HardwareType as Fan)
+        var cpuFanSensor = sensors.FirstOrDefault(s => (s.HardwareType == HardwareType.Motherboard || s.HardwareType == HardwareType.SuperIO) && s.Type == SensorType.Fan && s.Name.Contains("CPU", StringComparison.OrdinalIgnoreCase))
             ?? sensors.FirstOrDefault(s => s.Type == SensorType.Fan && s.Name.Contains("CPU", StringComparison.OrdinalIgnoreCase))
-            ?? sensors.FirstOrDefault(s => s.HardwareType == HardwareType.Motherboard && s.Type == SensorType.Fan);
+            ?? sensors.FirstOrDefault(s => (s.HardwareType == HardwareType.Motherboard || s.HardwareType == HardwareType.SuperIO) && s.Type == SensorType.Fan);
         var cpuFan = cpuFanSensor?.Value;
 
         // 3. GPU Sensors
@@ -126,21 +126,47 @@ do
             }
         }
 
-        // If prefix didn't match or wasn't provided, auto-map any motherboard fans not assigned to CPU/GPU
+        // If prefix didn't match or wasn't provided, auto-map by parsing index from motherboard/SuperIO fan identifiers
         if (boardFansArray.All(f => !f.HasValue))
         {
-            var otherRpmSensors = sensors
-                .Where(s => s.HardwareType == HardwareType.Motherboard && s.Type == SensorType.Fan)
+            var boardFanSensors = sensors
+                .Where(s => (s.HardwareType == HardwareType.Motherboard || s.HardwareType == HardwareType.SuperIO) && s.Type == SensorType.Fan)
                 .Where(s => s.Identifier != cpuFanSensor?.Identifier && s.Identifier != gpuFanSensor?.Identifier)
-                .OrderBy(s => s.Name)
-                .Take(7)
                 .ToList();
 
-            for (int i = 0; i < 7; i++)
+            foreach (var s in boardFanSensors)
             {
-                if (i < otherRpmSensors.Count)
+                int fanIndex = -1;
+                var lastSlash = s.Identifier.LastIndexOf('/');
+                if (lastSlash >= 0 && int.TryParse(s.Identifier.Substring(lastSlash + 1), out var idx))
                 {
-                    boardFansArray[i] = otherRpmSensors[i].Value;
+                    fanIndex = idx;
+                }
+                else if (s.Name.StartsWith("Fan #", StringComparison.OrdinalIgnoreCase) && int.TryParse(s.Name.Substring(5), out var idx2))
+                {
+                    fanIndex = idx2 - 1;
+                }
+
+                if (fanIndex >= 0 && fanIndex < 7)
+                {
+                    boardFansArray[fanIndex] = s.Value;
+                }
+            }
+
+            // If still no fans matched (e.g. index parsing yielded nothing), auto-map sequentially
+            if (boardFansArray.All(f => !f.HasValue))
+            {
+                var otherRpmSensors = boardFanSensors
+                    .OrderBy(s => s.Name)
+                    .Take(7)
+                    .ToList();
+
+                for (int i = 0; i < 7; i++)
+                {
+                    if (i < otherRpmSensors.Count)
+                    {
+                        boardFansArray[i] = otherRpmSensors[i].Value;
+                    }
                 }
             }
         }
@@ -154,36 +180,36 @@ do
         var network = QueryNetworkRates(networkPrevious, ref networkPreviousAt, config);
 
         var content = new StringBuilder()
-            .AppendLine($"CPU={Round(cpuTemp)}")
-            .AppendLine($"GPUCore={Round(gpuCore)}")
-            .AppendLine($"GPUHotspot={Round(gpuHotspot)}")
-            .AppendLine($"GPUMemory={Round(gpuMemory)}")
-            .AppendLine($"GPUFan={Round(gpuFan)}")
-            .AppendLine($"GPUFanPct={Round(gpuFanPct)}")
-            .AppendLine($"CPUFan={Round(cpuFan)}")
-            .AppendLine($"BoardFan1={Round(boardFansArray[0])}")
-            .AppendLine($"BoardFan2={Round(boardFansArray[1])}")
-            .AppendLine($"BoardFan3={Round(boardFansArray[2])}")
-            .AppendLine($"BoardFan4={Round(boardFansArray[3])}")
-            .AppendLine($"BoardFan5={Round(boardFansArray[4])}")
-            .AppendLine($"BoardFan6={Round(boardFansArray[5])}")
-            .AppendLine($"BoardFan7={Round(boardFansArray[6])}")
-            .AppendLine($"PSUFan={Round(psuFan)}")
-            .AppendLine($"NetEthInMbps={network.EthInMbps.ToString("0.0", CultureInfo.InvariantCulture)}")
-            .AppendLine($"NetEthOutMbps={network.EthOutMbps.ToString("0.0", CultureInfo.InvariantCulture)}")
-            .AppendLine($"NetWifiInMbps={network.WifiInMbps.ToString("0.0", CultureInfo.InvariantCulture)}")
-            .AppendLine($"NetWifiOutMbps={network.WifiOutMbps.ToString("0.0", CultureInfo.InvariantCulture)}")
-            .AppendLine($"NetWifiApInMbps={network.WifiApInMbps.ToString("0.0", CultureInfo.InvariantCulture)}")
-            .AppendLine($"NetWifiApOutMbps={network.WifiApOutMbps.ToString("0.0", CultureInfo.InvariantCulture)}")
-            .AppendLine($"NetWifiActiveMode={network.WifiActiveMode}")
-            .AppendLine($"NetWifiActiveInMbps={network.WifiActiveInMbps.ToString("0.0", CultureInfo.InvariantCulture)}")
-            .AppendLine($"NetWifiActiveOutMbps={network.WifiActiveOutMbps.ToString("0.0", CultureInfo.InvariantCulture)}")
-            .AppendLine($"NetWifiActiveDlMbps={network.WifiActiveDlMbps.ToString("0.0", CultureInfo.InvariantCulture)}")
-            .AppendLine($"NetWifiActiveUlMbps={network.WifiActiveUlMbps.ToString("0.0", CultureInfo.InvariantCulture)}")
-            .AppendLine($"BridgeSource=LibreHardwareMonitor{(nvidiaGpu is null ? "" : "+NvidiaSmi")}")
+            .Append($"CPU={Round(cpuTemp)}\n")
+            .Append($"GPUCore={Round(gpuCore)}\n")
+            .Append($"GPUHotspot={Round(gpuHotspot)}\n")
+            .Append($"GPUMemory={Round(gpuMemory)}\n")
+            .Append($"GPUFan={Round(gpuFan)}\n")
+            .Append($"GPUFanPct={Round(gpuFanPct)}\n")
+            .Append($"CPUFan={Round(cpuFan)}\n")
+            .Append($"BoardFan1={Round(boardFansArray[0])}\n")
+            .Append($"BoardFan2={Round(boardFansArray[1])}\n")
+            .Append($"BoardFan3={Round(boardFansArray[2])}\n")
+            .Append($"BoardFan4={Round(boardFansArray[3])}\n")
+            .Append($"BoardFan5={Round(boardFansArray[4])}\n")
+            .Append($"BoardFan6={Round(boardFansArray[5])}\n")
+            .Append($"BoardFan7={Round(boardFansArray[6])}\n")
+            .Append($"PSUFan={Round(psuFan)}\n")
+            .Append($"NetEthInMbps={network.EthInMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
+            .Append($"NetEthOutMbps={network.EthOutMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
+            .Append($"NetWifiInMbps={network.WifiInMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
+            .Append($"NetWifiOutMbps={network.WifiOutMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
+            .Append($"NetWifiApInMbps={network.WifiApInMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
+            .Append($"NetWifiApOutMbps={network.WifiApOutMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
+            .Append($"NetWifiActiveMode={network.WifiActiveMode}\n")
+            .Append($"NetWifiActiveInMbps={network.WifiActiveInMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
+            .Append($"NetWifiActiveOutMbps={network.WifiActiveOutMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
+            .Append($"NetWifiActiveDlMbps={network.WifiActiveDlMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
+            .Append($"NetWifiActiveUlMbps={network.WifiActiveUlMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
+            .Append($"BridgeSource=LibreHardwareMonitor{(nvidiaGpu is null ? "" : "+NvidiaSmi")}\n")
             .ToString();
 
-        File.WriteAllText(outFile, content, Encoding.ASCII);
+        SafeWriteAllText(outFile, content);
         Console.Write(content);
     }
     catch (Exception ex)
@@ -343,36 +369,36 @@ static void TryWriteNvidiaFallback(string outFile)
         existing["BridgeSource"] = "NvidiaSmiFallback";
 
         var content = new StringBuilder()
-            .AppendLine($"CPU={Get(existing, "CPU")}")
-            .AppendLine($"GPUCore={Get(existing, "GPUCore")}")
-            .AppendLine($"GPUHotspot={Get(existing, "GPUHotspot")}")
-            .AppendLine($"GPUMemory={Get(existing, "GPUMemory")}")
-            .AppendLine($"GPUFan={Get(existing, "GPUFan")}")
-            .AppendLine($"GPUFanPct={Get(existing, "GPUFanPct")}")
-            .AppendLine($"CPUFan={Get(existing, "CPUFan")}")
-            .AppendLine($"BoardFan1={Get(existing, "BoardFan1")}")
-            .AppendLine($"BoardFan2={Get(existing, "BoardFan2")}")
-            .AppendLine($"BoardFan3={Get(existing, "BoardFan3")}")
-            .AppendLine($"BoardFan4={Get(existing, "BoardFan4")}")
-            .AppendLine($"BoardFan5={Get(existing, "BoardFan5")}")
-            .AppendLine($"BoardFan6={Get(existing, "BoardFan6")}")
-            .AppendLine($"BoardFan7={Get(existing, "BoardFan7")}")
-            .AppendLine($"PSUFan={Get(existing, "PSUFan")}")
-            .AppendLine($"NetEthInMbps={Get(existing, "NetEthInMbps")}")
-            .AppendLine($"NetEthOutMbps={Get(existing, "NetEthOutMbps")}")
-            .AppendLine($"NetWifiInMbps={Get(existing, "NetWifiInMbps")}")
-            .AppendLine($"NetWifiOutMbps={Get(existing, "NetWifiOutMbps")}")
-            .AppendLine($"NetWifiApInMbps={Get(existing, "NetWifiApInMbps")}")
-            .AppendLine($"NetWifiApOutMbps={Get(existing, "NetWifiApOutMbps")}")
-            .AppendLine($"NetWifiActiveMode={Get(existing, "NetWifiActiveMode")}")
-            .AppendLine($"NetWifiActiveInMbps={Get(existing, "NetWifiActiveInMbps")}")
-            .AppendLine($"NetWifiActiveOutMbps={Get(existing, "NetWifiActiveOutMbps")}")
-            .AppendLine($"NetWifiActiveDlMbps={Get(existing, "NetWifiActiveDlMbps")}")
-            .AppendLine($"NetWifiActiveUlMbps={Get(existing, "NetWifiActiveUlMbps")}")
-            .AppendLine($"BridgeSource={Get(existing, "BridgeSource")}")
+            .Append($"CPU={Get(existing, "CPU")}\n")
+            .Append($"GPUCore={Get(existing, "GPUCore")}\n")
+            .Append($"GPUHotspot={Get(existing, "GPUHotspot")}\n")
+            .Append($"GPUMemory={Get(existing, "GPUMemory")}\n")
+            .Append($"GPUFan={Get(existing, "GPUFan")}\n")
+            .Append($"GPUFanPct={Get(existing, "GPUFanPct")}\n")
+            .Append($"CPUFan={Get(existing, "CPUFan")}\n")
+            .Append($"BoardFan1={Get(existing, "BoardFan1")}\n")
+            .Append($"BoardFan2={Get(existing, "BoardFan2")}\n")
+            .Append($"BoardFan3={Get(existing, "BoardFan3")}\n")
+            .Append($"BoardFan4={Get(existing, "BoardFan4")}\n")
+            .Append($"BoardFan5={Get(existing, "BoardFan5")}\n")
+            .Append($"BoardFan6={Get(existing, "BoardFan6")}\n")
+            .Append($"BoardFan7={Get(existing, "BoardFan7")}\n")
+            .Append($"PSUFan={Get(existing, "PSUFan")}\n")
+            .Append($"NetEthInMbps={Get(existing, "NetEthInMbps")}\n")
+            .Append($"NetEthOutMbps={Get(existing, "NetEthOutMbps")}\n")
+            .Append($"NetWifiInMbps={Get(existing, "NetWifiInMbps")}\n")
+            .Append($"NetWifiOutMbps={Get(existing, "NetWifiOutMbps")}\n")
+            .Append($"NetWifiApInMbps={Get(existing, "NetWifiApInMbps")}\n")
+            .Append($"NetWifiApOutMbps={Get(existing, "NetWifiApOutMbps")}\n")
+            .Append($"NetWifiActiveMode={Get(existing, "NetWifiActiveMode")}\n")
+            .Append($"NetWifiActiveInMbps={Get(existing, "NetWifiActiveInMbps")}\n")
+            .Append($"NetWifiActiveOutMbps={Get(existing, "NetWifiActiveOutMbps")}\n")
+            .Append($"NetWifiActiveDlMbps={Get(existing, "NetWifiActiveDlMbps")}\n")
+            .Append($"NetWifiActiveUlMbps={Get(existing, "NetWifiActiveUlMbps")}\n")
+            .Append($"BridgeSource={Get(existing, "BridgeSource")}\n")
             .ToString();
 
-        File.WriteAllText(outFile, content, Encoding.ASCII);
+        SafeWriteAllText(outFile, content);
     }
     catch
     {
@@ -562,6 +588,31 @@ static (double EthInMbps, double EthOutMbps, double WifiInMbps, double WifiOutMb
     var activeUl = activeMode == "AP" ? wifiApIn : activeOut;
 
     return (ethIn, ethOut, wifiIn, wifiOut, wifiApIn, wifiApOut, activeMode, activeIn, activeOut, activeDl, activeUl);
+}
+
+static void SafeWriteAllText(string path, string content)
+{
+    const int maxRetries = 5;
+    for (int i = 0; i < maxRetries; i++)
+    {
+        try
+        {
+            using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
+            using (var writer = new StreamWriter(fs, Encoding.ASCII))
+            {
+                writer.Write(content);
+            }
+            return;
+        }
+        catch (IOException)
+        {
+            if (i == maxRetries - 1)
+            {
+                throw;
+            }
+            System.Threading.Thread.Sleep(50);
+        }
+    }
 }
 
 sealed class SimpleSensor
