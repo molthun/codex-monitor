@@ -24,6 +24,7 @@ CodexCollector.*
 # Local/editor noise
 .vs/
 .vscode/
+.aider*
 *.user
 *.suo
 Thumbs.db
