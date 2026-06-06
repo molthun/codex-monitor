@@ -173,6 +173,18 @@ function Check-ForUpdates {
             }
             Copy-Item -LiteralPath $preset -Destination (Join-Path $skinTarget "CodexMonitor.ini") -Force
 
+            # Update the actually-running bridge binary. The ZIP delivers the
+            # precompiled exe under Deploy\Payload\CodexBridge, but the scheduled
+            # task runs it from CodexBridge\, so the file copy above never touches
+            # the live binary. Mirror what the installer does and copy it across
+            # (the bridge process was already stopped at the start of the update).
+            $payloadBridgeExe = Join-Path $InstallRoot "Deploy\Payload\CodexBridge\CodexBridge.exe"
+            $runBridgeExe = Join-Path $InstallRoot "CodexBridge\CodexBridge.exe"
+            if (Test-Path -LiteralPath $payloadBridgeExe) {
+                New-Item -ItemType Directory -Force -Path (Split-Path $runBridgeExe) | Out-Null
+                Copy-Item -LiteralPath $payloadBridgeExe -Destination $runBridgeExe -Force
+            }
+
             # Restart the elevated bridge task
             Invoke-CheckedCommand -Description "Restart CodexBridge scheduled task" -Command { schtasks.exe /run /tn "CodexMonitor Bridge Elevated" }
 
