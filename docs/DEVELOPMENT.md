@@ -96,13 +96,26 @@ C:\CodexMonitor\CodexBridge\Program.cs
 C:\CodexMonitor\CodexBridge\SettingsForm.cs
 ```
 
-Build:
+Build (local test):
 
 ```powershell
-dotnet publish "C:\CodexMonitor\CodexBridge\CodexBridge.csproj" -c Release -r win-x64 --self-contained true -o "C:\CodexMonitor\Deploy\Payload\CodexBridge"
+dotnet publish "C:\CodexMonitor\CodexBridge\CodexBridge.csproj" -c Release
 ```
 
-The installer expects the bundled self-contained `Deploy\Payload\CodexBridge\CodexBridge.exe` to exist. Rebuild it before committing bridge source changes.
+This produces the self-contained single-file exe at `CodexBridge\bin\Release\net10.0-windows\win-x64\publish\CodexBridge.exe`.
+
+The binary is **not** committed to the repo; it is distributed via GitHub Releases (see "Releasing the bridge binary"). For a local install, `Install-CodexMonitor.ps1` auto-detects this build output, and otherwise downloads the latest release asset, when the payload copy is missing.
+
+### Releasing the bridge binary
+
+Bridge changes ship by publishing a tagged release:
+
+```powershell
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+The `.github/workflows/release.yml` workflow then builds the self-contained `CodexBridge.exe` and attaches it to the GitHub Release for that tag. The installer and the in-app auto-updater download the exe from the latest release, so a new release is what actually delivers a bridge update to users.
 
 Keep these bridge copies synchronized:
 

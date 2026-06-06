@@ -227,7 +227,7 @@ When changing the widget:
 1. Edit the intended source/preset.
 2. Apply it to the active skin.
 3. Keep root and payload copies synchronized.
-4. Rebuild `Deploy\Payload\CodexBridge\CodexBridge.exe` when bridge source or settings UI code changes.
+4. Publish a new tagged release (`v*`) when bridge source or settings UI code changes; CI builds and attaches `CodexBridge.exe` to the release (the binary is not committed).
 5. Update docs/changelog.
 
 ## Critical Rainmeter Detail

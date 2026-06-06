@@ -32,12 +32,9 @@ This document provides a systematic analysis of CodexMonitor's current third-par
 
 ---
 
-## 4. GitHub ZIP Updater (Background Auto-Updater)
-* **Current implementation**: The background watcher checks the GitHub commits API, downloads the latest `main` ZIP archive when the remote SHA changes, preserves the user's local `config.json`, rebuilds the bridge, and refreshes Rainmeter.
-* **Alternatives**:
-  * **GitHub Release Updater**: Check versioned GitHub Releases instead of the moving `main` branch.
-* **Simplification Effort**: **Done** for branch ZIP updates; **Medium** if moving to formal releases later.
-* **Stability Impact**: **High**. Git is no longer required on the client machine. Git is only needed by developers.
+## 4. GitHub Release Updater (Background Auto-Updater)
+* **Current implementation**: The background watcher checks the GitHub Releases API for the latest tag. When it differs from `.local_version`, it downloads that tag's source ZIP (scripts/skin/presets), downloads the precompiled `CodexBridge.exe` from the release assets, preserves the user's local `config.json`, replaces the bridge binary, and refreshes Rainmeter. The binary itself is built by CI (`.github/workflows/release.yml`) on each tag and is not committed to the repo.
+* **Stability Impact**: **High**. Git is not required on the client machine. Updates are tied to immutable, versioned releases instead of a moving branch, and the repository stays free of large committed binaries.
 
 ---
 

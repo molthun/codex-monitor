@@ -48,18 +48,18 @@ if (-not (Test-Command "winget")) {
     exit 1
 }
 
-# Write initial .local_version if we are in a Git clone
+# Record the latest release tag as the version baseline for the auto-updater.
 $projectRoot = Split-Path -Parent $PSScriptRoot
-if ((Test-Command "git") -and (Test-Path -LiteralPath (Join-Path $projectRoot ".git"))) {
-    try {
-        $sha = (git -C $projectRoot rev-parse HEAD 2>$null | Select-Object -First 1)
-        if ($sha) {
-            $versionFile = Join-Path $projectRoot ".local_version"
-            Set-Content -LiteralPath $versionFile -Value $sha.Trim() -Encoding UTF8
-            Write-Host "Initialized .local_version file with current Git SHA." -ForegroundColor Green
-        }
-    } catch {}
-}
+try {
+    $headers = @{ "User-Agent" = "CodexMonitor-Setup" }
+    $response = Invoke-RestMethod -Uri "https://api.github.com/repos/molthun/codex-monitor/releases/latest" -Headers $headers -TimeoutSec 10
+    $remoteTag = $response.tag_name
+    if ($remoteTag) {
+        $versionFile = Join-Path $projectRoot ".local_version"
+        Set-Content -LiteralPath $versionFile -Value $remoteTag.Trim() -Encoding UTF8
+        Write-Host "Initialized .local_version with latest release tag $remoteTag." -ForegroundColor Green
+    }
+} catch {}
 
 Install-WingetPackage -Id "Rainmeter.Rainmeter" -Name "Rainmeter"
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-06-06
+
+- Fixed widget corner pinning and auto-size: anchor the skin by its right edge (`AnchorX=100%`) so positioning no longer depends on the dynamic widget width, and re-pin the widget when it drifts (Rainmeter refresh/restart, manual drag, DPI change) instead of only on a resolution change. Removed the duplicate move that caused a visible jump on profile switches.
+- Made the hardware bridge more reliable: `temps.txt` is now written atomically (temp file + replace) so Rainmeter never reads a truncated file and flashes all-zeros, and `nvidia-smi` is queried with a hard timeout that kills a hung process instead of freezing the update loop.
+- Switched binary distribution to GitHub Releases. `CodexBridge.exe` is no longer committed to the repository; pushing a version tag (`v*`) builds it via GitHub Actions (`.github/workflows/release.yml`) and attaches it as a release asset. The installer and the in-app auto-updater download the binary from the latest release, and the updater now tracks release tags instead of `main` commits.
+- The auto-updater installs the downloaded binary into the bridge run location, and the bridge scheduled-task name is read from `config.json`.
+
 ## 2026-05-29
 
 - Added a graphical WinForms settings wizard hosted by `CodexBridge.exe --settings`; `Configure-CodexMonitor.ps1` now launches that GUI instead of running the older console prompts.

@@ -81,125 +81,123 @@ function Check-ForUpdates {
         if (Test-Path -LiteralPath $versionFile) {
             $local = (Get-Content -LiteralPath $versionFile -Raw).Trim()
         }
-        else {
-            if ((Test-Path -LiteralPath (Join-Path $InstallRoot ".git")) -and (Test-Command "git")) {
-                $local = (Invoke-CheckedCommand -Description "Read local revision" -Command { git -C $InstallRoot rev-parse HEAD } | Select-Object -First 1).Trim()
-                Set-Content -LiteralPath $versionFile -Value $local -Encoding UTF8
-            }
-        }
 
+        # The bridge binary is distributed via GitHub Releases (not committed to the
+        # repo), so updates are keyed to the latest published release tag.
         $headers = @{
             "User-Agent" = "CodexMonitor-Updater"
         }
-        $response = Invoke-RestMethod -Uri "https://api.github.com/repos/molthun/codex-monitor/commits/main" -Headers $headers -TimeoutSec 15
-        $remote = $response.sha
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/molthun/codex-monitor/releases/latest" -Headers $headers -TimeoutSec 15
+        $remote = $release.tag_name
 
         if (-not $remote) {
-            throw "Failed to retrieve remote version SHA from GitHub API."
+            throw "Failed to retrieve the latest release tag from GitHub API."
         }
 
-        if ($local -ne $remote) {
-            Write-Host "New version found (Local: $local, Remote: $remote). Downloading updates..."
-            Show-Notification "CodexMonitor Update" "Installing the latest updates from GitHub..."
-
-            $zipUrl = "https://github.com/molthun/codex-monitor/archive/refs/heads/main.zip"
-            $tempZip = Join-Path $env:TEMP "codex-monitor-main.zip"
-            $tempExtract = Join-Path $env:TEMP "codex-monitor-extract"
-
-            if (Test-Path -LiteralPath $tempZip) { Remove-Item -LiteralPath $tempZip -Force }
-            if (Test-Path -LiteralPath $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force }
-
-            Invoke-WebRequest -Uri $zipUrl -OutFile $tempZip -UseBasicParsing
-            Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
-
-            $extractedRepoDir = Join-Path $tempExtract "codex-monitor-main"
-            if (-not (Test-Path -LiteralPath $extractedRepoDir)) {
-                $extractedRepoDir = Get-ChildItem -Path $tempExtract -Directory | Select-Object -First 1
-                if (-not $extractedRepoDir) {
-                    throw "Failed to locate extracted repository directory in ZIP."
-                }
-                $extractedRepoDir = $extractedRepoDir.FullName
-            }
-
-            # Stop the elevated bridge task if running to allow file updates
-            Stop-Process -Name "CodexBridge" -Force -ErrorAction SilentlyContinue
-
-            # Copy all files from ZIP to $InstallRoot, EXCLUDING config.json to preserve user settings
-            Get-ChildItem -Path $extractedRepoDir -Recurse | ForEach-Object {
-                $relativePath = $_.FullName.Substring($extractedRepoDir.Length + 1)
-                $destPath = Join-Path $InstallRoot $relativePath
-
-                if ($_.PsIsContainer) {
-                    New-Item -ItemType Directory -Path $destPath -Force | Out-Null
-                } else {
-                    if ($relativePath -ieq "config.json" -or $relativePath -like ".git\*") {
-                        return
-                    }
-
-                    $parentDir = Split-Path $destPath
-                    if (-not (Test-Path -LiteralPath $parentDir)) {
-                        New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
-                    }
-
-                    Copy-Item -LiteralPath $_.FullName -Destination $destPath -Force
-                }
-            }
-
-            Remove-Item -LiteralPath $tempZip -Force
-            Remove-Item -LiteralPath $tempExtract -Recurse -Force
-
-            Set-Content -LiteralPath $versionFile -Value $remote -Encoding UTF8
-
-            # Rebuild step is no longer needed as the binary is precompiled and included in the ZIP payload.
-
-            # Copy updated presets/payload to the active Rainmeter skin target
-            $skinPath = Get-RainmeterSkinPath
-            $skinTarget = Join-Path $skinPath "CodexMonitor"
-            if (-not (Test-Path -LiteralPath $skinTarget)) {
-                throw "Rainmeter skin target was not found: $skinTarget"
-            }
-
-            $payloadIcons = Join-Path $InstallRoot "Deploy\Payload\@Resources\Icons"
-            $targetIcons = Join-Path $skinTarget "@Resources\Icons"
-            if (Test-Path -LiteralPath $payloadIcons) {
-                New-Item -ItemType Directory -Force -Path $targetIcons | Out-Null
-                Copy-Item -LiteralPath "$payloadIcons\*" -Destination $targetIcons -Force
-            }
-
-            $mode = Get-AutoProfileMode -ScreenHeight ([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height)
-            $preset = Get-PresetPath -Mode $mode
-            if (-not $preset) {
-                throw "Could not find a Rainmeter preset for mode $mode."
-            }
-            Copy-Item -LiteralPath $preset -Destination (Join-Path $skinTarget "CodexMonitor.ini") -Force
-
-            # Update the actually-running bridge binary. The ZIP delivers the
-            # precompiled exe under Deploy\Payload\CodexBridge, but the scheduled
-            # task runs it from CodexBridge\, so the file copy above never touches
-            # the live binary. Mirror what the installer does and copy it across
-            # (the bridge process was already stopped at the start of the update).
-            $payloadBridgeExe = Join-Path $InstallRoot "Deploy\Payload\CodexBridge\CodexBridge.exe"
-            $runBridgeExe = Join-Path $InstallRoot "CodexBridge\CodexBridge.exe"
-            if (Test-Path -LiteralPath $payloadBridgeExe) {
-                New-Item -ItemType Directory -Force -Path (Split-Path $runBridgeExe) | Out-Null
-                Copy-Item -LiteralPath $payloadBridgeExe -Destination $runBridgeExe -Force
-            }
-
-            # Restart the elevated bridge task
-            Invoke-CheckedCommand -Description "Restart CodexBridge scheduled task" -Command { schtasks.exe /run /tn "CodexMonitor Bridge Elevated" }
-
-            # Refresh Rainmeter
-            $rainmeterExe = if ($config.rainmeter.executable) { $config.rainmeter.executable } else { "C:\Program Files\Rainmeter\Rainmeter.exe" }
-            if (Test-Path -LiteralPath $rainmeterExe) {
-                & $rainmeterExe !Refresh "CodexMonitor"
-                if ($LASTEXITCODE -ne 0) { throw "Rainmeter refresh failed with exit code $LASTEXITCODE." }
-            }
-            else {
-                throw "Rainmeter executable was not found: $rainmeterExe"
-            }
-
-            Show-Notification "CodexMonitor Updated" "Widget has been updated to the latest version successfully!"
+        if ($local -eq $remote) {
+            return
         }
+
+        Write-Host "New release found (Local: $local, Remote: $remote). Downloading updates..."
+        Show-Notification "CodexMonitor Update" "Installing CodexMonitor $remote from GitHub..."
+
+        # 1. Download the source for this tag (scripts, skin, presets - not the exe).
+        $zipUrl = "https://github.com/molthun/codex-monitor/archive/refs/tags/$remote.zip"
+        $tempZip = Join-Path $env:TEMP "codex-monitor-$remote.zip"
+        $tempExtract = Join-Path $env:TEMP "codex-monitor-extract"
+
+        if (Test-Path -LiteralPath $tempZip) { Remove-Item -LiteralPath $tempZip -Force }
+        if (Test-Path -LiteralPath $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force }
+
+        Invoke-WebRequest -Uri $zipUrl -OutFile $tempZip -UseBasicParsing
+        Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
+
+        $extractedRepoDir = Get-ChildItem -Path $tempExtract -Directory | Select-Object -First 1
+        if (-not $extractedRepoDir) {
+            throw "Failed to locate extracted repository directory in ZIP."
+        }
+        $extractedRepoDir = $extractedRepoDir.FullName
+
+        # 2. Download the precompiled bridge exe attached to the release.
+        $bridgeAsset = Join-Path $env:TEMP "CodexBridge-$remote.exe"
+        if (Test-Path -LiteralPath $bridgeAsset) { Remove-Item -LiteralPath $bridgeAsset -Force }
+        $exeUrl = "https://github.com/molthun/codex-monitor/releases/download/$remote/CodexBridge.exe"
+        Invoke-WebRequest -Uri $exeUrl -OutFile $bridgeAsset -UseBasicParsing
+        if (-not (Test-Path -LiteralPath $bridgeAsset) -or (Get-Item -LiteralPath $bridgeAsset).Length -lt 1MB) {
+            throw "Downloaded CodexBridge.exe asset is missing or too small."
+        }
+
+        # Stop the bridge so its binary can be replaced.
+        Stop-Process -Name "CodexBridge" -Force -ErrorAction SilentlyContinue
+
+        # Copy source files to $InstallRoot, EXCLUDING config.json to preserve user settings.
+        Get-ChildItem -Path $extractedRepoDir -Recurse | ForEach-Object {
+            $relativePath = $_.FullName.Substring($extractedRepoDir.Length + 1)
+            $destPath = Join-Path $InstallRoot $relativePath
+
+            if ($_.PsIsContainer) {
+                New-Item -ItemType Directory -Path $destPath -Force | Out-Null
+            } else {
+                if ($relativePath -ieq "config.json") {
+                    return
+                }
+
+                $parentDir = Split-Path $destPath
+                if (-not (Test-Path -LiteralPath $parentDir)) {
+                    New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
+                }
+
+                Copy-Item -LiteralPath $_.FullName -Destination $destPath -Force
+            }
+        }
+
+        # 3. Install the downloaded bridge binary into the run location.
+        $runBridgeExe = Join-Path $InstallRoot "CodexBridge\CodexBridge.exe"
+        New-Item -ItemType Directory -Force -Path (Split-Path $runBridgeExe) | Out-Null
+        Copy-Item -LiteralPath $bridgeAsset -Destination $runBridgeExe -Force
+
+        Remove-Item -LiteralPath $tempZip -Force
+        Remove-Item -LiteralPath $tempExtract -Recurse -Force
+        Remove-Item -LiteralPath $bridgeAsset -Force
+
+        Set-Content -LiteralPath $versionFile -Value $remote -Encoding UTF8
+
+        # Copy updated icons + preset to the active Rainmeter skin target.
+        $skinPath = Get-RainmeterSkinPath
+        $skinTarget = Join-Path $skinPath "CodexMonitor"
+        if (-not (Test-Path -LiteralPath $skinTarget)) {
+            throw "Rainmeter skin target was not found: $skinTarget"
+        }
+
+        $payloadIcons = Join-Path $InstallRoot "Deploy\Payload\@Resources\Icons"
+        $targetIcons = Join-Path $skinTarget "@Resources\Icons"
+        if (Test-Path -LiteralPath $payloadIcons) {
+            New-Item -ItemType Directory -Force -Path $targetIcons | Out-Null
+            Copy-Item -LiteralPath "$payloadIcons\*" -Destination $targetIcons -Force
+        }
+
+        $mode = Get-AutoProfileMode -ScreenHeight ([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height)
+        $preset = Get-PresetPath -Mode $mode
+        if (-not $preset) {
+            throw "Could not find a Rainmeter preset for mode $mode."
+        }
+        Copy-Item -LiteralPath $preset -Destination (Join-Path $skinTarget "CodexMonitor.ini") -Force
+
+        # Restart the elevated bridge task (task name from config).
+        $taskName = if ($config.bridge.taskName) { $config.bridge.taskName } else { "CodexMonitor Bridge Elevated" }
+        Invoke-CheckedCommand -Description "Restart CodexBridge scheduled task" -Command { schtasks.exe /run /tn $taskName }
+
+        # Refresh Rainmeter.
+        $rainmeterExe = if ($config.rainmeter.executable) { $config.rainmeter.executable } else { "C:\Program Files\Rainmeter\Rainmeter.exe" }
+        if (Test-Path -LiteralPath $rainmeterExe) {
+            & $rainmeterExe !Refresh "CodexMonitor"
+            if ($LASTEXITCODE -ne 0) { throw "Rainmeter refresh failed with exit code $LASTEXITCODE." }
+        }
+        else {
+            throw "Rainmeter executable was not found: $rainmeterExe"
+        }
+
+        Show-Notification "CodexMonitor Updated" "Widget has been updated to $remote successfully!"
     }
     catch {
         $reason = $_.Exception.Message

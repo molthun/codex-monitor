@@ -67,17 +67,17 @@ if (-not (Test-Path -LiteralPath $extractedDir)) {
 New-Item -ItemType Directory -Path $installDir -Force | Out-Null
 Copy-Item -LiteralPath "$extractedDir\*" -Destination $installDir -Recurse -Force
 
-# Fetch latest remote SHA from GitHub API and write to C:\CodexMonitor\.local_version
+# Record the latest release tag as the version baseline for the auto-updater.
 try {
-    Write-Host "Fetching remote version signature from GitHub API..." -ForegroundColor Yellow
+    Write-Host "Fetching latest release tag from GitHub API..." -ForegroundColor Yellow
     $headers = @{ "User-Agent" = "CodexMonitor-Bootstrap" }
-    $response = Invoke-RestMethod -Uri "https://api.github.com/repos/molthun/codex-monitor/commits/main" -Headers $headers -TimeoutSec 10
-    $remoteSha = $response.sha
-    if ($remoteSha) {
-        Set-Content -LiteralPath (Join-Path $installDir ".local_version") -Value $remoteSha.Trim() -Encoding UTF8
+    $response = Invoke-RestMethod -Uri "https://api.github.com/repos/molthun/codex-monitor/releases/latest" -Headers $headers -TimeoutSec 10
+    $remoteTag = $response.tag_name
+    if ($remoteTag) {
+        Set-Content -LiteralPath (Join-Path $installDir ".local_version") -Value $remoteTag.Trim() -Encoding UTF8
     }
 } catch {
-    Write-Warning "Failed to query latest SHA signature: $_. Version tracking will initialize on the next run."
+    Write-Warning "Failed to query latest release tag: $_. Version tracking will initialize on the next run."
 }
 
 # Clean up temp files

@@ -18,6 +18,9 @@ CodexBridge/obj/
 Deploy/Payload/CodexBridge/bin/
 Deploy/Payload/CodexBridge/obj/
 
+# Precompiled bridge binary is distributed via GitHub Releases, not committed.
+Deploy/Payload/CodexBridge/CodexBridge.exe
+
 # Obsolete prototype collector
 CodexCollector.*
 

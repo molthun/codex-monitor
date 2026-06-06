@@ -112,8 +112,10 @@ function Get-PrimaryMonitorPosition {
     $widgetWidth = Get-WidgetWidth -Path $SkinIni
     $marginRight = if ($config.display.marginRight -ne $null) { [int]$config.display.marginRight } else { 24 }
     $marginTop = if ($config.display.marginTop -ne $null) { [int]$config.display.marginTop } else { 24 }
+    # Anchor by the right edge (AnchorX=100% is written below), so WindowX is the
+    # right edge position and the corner pin does not depend on the real width.
     return @{
-        X = [int]($screen.X + $screen.Width - $widgetWidth - $marginRight)
+        X = [int]($screen.X + $screen.Width - $marginRight)
         Y = [int]($screen.Y + $marginTop)
         Width = $screen.Width
         Height = $screen.Height
@@ -156,6 +158,35 @@ Get-Process CodexBridge -ErrorAction SilentlyContinue | Stop-Process -Force -Err
 Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
     Where-Object { $_.CommandLine -like "*Watch-PrimaryDisplay.ps1*" } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
+# The precompiled bridge is distributed via GitHub Releases, not committed to the
+# repo. If the payload copy is missing (fresh source download), obtain it from a
+# local build if present, otherwise download it from the latest GitHub release.
+$payloadBridgeExe = Join-Path $bridgeSource "CodexBridge.exe"
+if (-not (Test-Path -LiteralPath $payloadBridgeExe)) {
+    New-Item -ItemType Directory -Force -Path $bridgeSource | Out-Null
+    $builtBridgeExe = Join-Path (Get-ProjectRoot) "CodexBridge\bin\Release\net10.0-windows\win-x64\publish\CodexBridge.exe"
+    if (Test-Path -LiteralPath $builtBridgeExe) {
+        Write-Host "Using locally built bridge binary." -ForegroundColor Yellow
+        Copy-Item -LiteralPath $builtBridgeExe -Destination $payloadBridgeExe -Force
+    } else {
+        Write-Host "Bridge binary not found in payload; downloading from the latest GitHub release..." -ForegroundColor Yellow
+        try {
+            $headers = @{ "User-Agent" = "CodexMonitor-Installer" }
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/molthun/codex-monitor/releases/latest" -Headers $headers -TimeoutSec 20
+            $tag = $release.tag_name
+            if (-not $tag) { throw "No published release was found." }
+            $exeUrl = "https://github.com/molthun/codex-monitor/releases/download/$tag/CodexBridge.exe"
+            Invoke-WebRequest -Uri $exeUrl -OutFile $payloadBridgeExe -UseBasicParsing
+        }
+        catch {
+            throw "Could not obtain CodexBridge.exe. Build it with 'dotnet publish CodexBridge\CodexBridge.csproj -c Release', or publish a GitHub release that includes the CodexBridge.exe asset. Details: $($_.Exception.Message)"
+        }
+    }
+    if (-not (Test-Path -LiteralPath $payloadBridgeExe) -or (Get-Item -LiteralPath $payloadBridgeExe).Length -lt 1MB) {
+        throw "CodexBridge.exe is missing or too small after attempting to obtain it."
+    }
+}
 
 $skinResourcesTarget = Join-Path $skinTarget "@Resources"
 New-Item -ItemType Directory -Force -Path $InstallRoot, $resourcesTarget, $skinTarget, $presetsTarget, $skinResourcesTarget | Out-Null
@@ -267,7 +298,7 @@ if (-not $SkipRainmeterLayout -and (Test-Path -LiteralPath $rainmeterIni)) {
     $position = Get-PrimaryMonitorPosition -SkinIni (Join-Path $skinTarget "CodexMonitor.ini")
     Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "WindowX" -Value $position.X
     Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "WindowY" -Value $position.Y
-    Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "AnchorX" -Value 0
+    Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "AnchorX" -Value "100%"
     Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "AnchorY" -Value 0
     Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "AutoSelectScreen" -Value 0
     if ($config.rainmeter.desktopMode.alwaysOnTop -ne $null) { Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "AlwaysOnTop" -Value $config.rainmeter.desktopMode.alwaysOnTop }
