@@ -166,7 +166,7 @@ function Check-ForUpdates {
                 Copy-Item -LiteralPath "$payloadIcons\*" -Destination $targetIcons -Force
             }
 
-            $mode = Get-AutoProfileMode -ScreenHeight [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height
+            $mode = Get-AutoProfileMode -ScreenHeight ([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height)
             $preset = Get-PresetPath -Mode $mode
             if (-not $preset) {
                 throw "Could not find a Rainmeter preset for mode $mode."
@@ -313,11 +313,11 @@ function Get-PresetPath {
 function Switch-ProfileIfNeeded {
     param([System.Drawing.Rectangle]$ScreenBounds)
 
-    if ($config.profiles.auto -eq $false) { return }
+    if ($config.profiles.auto -eq $false) { return $false }
 
     $mode = Get-AutoProfileMode -ScreenHeight $ScreenBounds.Height
     $preset = Get-PresetPath -Mode $mode
-    if (-not $preset) { return }
+    if (-not $preset) { return $false }
 
     $skinPath = Get-RainmeterSkinPath
     $skinIni = Join-Path $skinPath "CodexMonitor\CodexMonitor.ini"
@@ -326,10 +326,10 @@ function Switch-ProfileIfNeeded {
     $targetWidth = Get-IniNumber -Path $preset -Key "W" -Default $currentWidth
     $targetHeight = Get-IniNumber -Path $preset -Key "H" -Default $currentHeight
 
-    if ($currentWidth -eq $targetWidth -and $currentHeight -eq $targetHeight) { return }
+    if ($currentWidth -eq $targetWidth -and $currentHeight -eq $targetHeight) { return $false }
 
     $switcher = Join-Path $InstallRoot "Deploy\Switch-WidgetSize.ps1"
-    if (-not (Test-Path -LiteralPath $switcher)) { return }
+    if (-not (Test-Path -LiteralPath $switcher)) { return $false }
 
     $args = @(
         "-NoProfile",
@@ -340,6 +340,10 @@ function Switch-ProfileIfNeeded {
     )
     if ($ConfigPath) { $args += @("-ConfigPath", $ConfigPath) }
     & powershell.exe @args | Out-Null
+
+    # The switcher already refreshed Rainmeter and positioned the widget, so the
+    # caller must NOT issue a second !Move in the same cycle (avoids a visible jump).
+    return $true
 }
 
 function Set-IniKey {
@@ -395,7 +399,7 @@ function Save-Position {
 
     Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "WindowX" -Value $X
     Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "WindowY" -Value $Y
-    Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "AnchorX" -Value 0
+    Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "AnchorX" -Value "100%"
     Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "AnchorY" -Value 0
     Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "AutoSelectScreen" -Value 0
     Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "SavePosition" -Value 0
@@ -403,14 +407,46 @@ function Save-Position {
     Set-Content -LiteralPath $rainmeterIni -Value $lines -Encoding Unicode
 }
 
-function Move-WidgetToPrimary {
+function Get-TargetPosition {
     Add-Type -AssemblyName System.Windows.Forms
     $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-    $width = Get-WidgetWidth
     $marginRight = if ($config.display.marginRight -ne $null) { [int]$config.display.marginRight } else { 24 }
     $marginTop = if ($config.display.marginTop -ne $null) { [int]$config.display.marginTop } else { 24 }
-    $x = [int]($screen.X + $screen.Width - $width - $marginRight)
-    $Y = [int]($screen.Y + $marginTop)
+    # Anchor the skin by its right edge (AnchorX=100% in Save-Position), so the
+    # right edge lands $marginRight from the screen edge regardless of the real
+    # (DynamicWindowSize) widget width. No width guessing needed.
+    return @{
+        X = [int]($screen.X + $screen.Width - $marginRight)
+        Y = [int]($screen.Y + $marginTop)
+        Screen = $screen
+    }
+}
+
+function Get-CurrentPosition {
+    $rainmeterIni = Join-Path $env:APPDATA "Rainmeter\Rainmeter.ini"
+    if (-not (Test-Path -LiteralPath $rainmeterIni)) { return $null }
+
+    $x = $null
+    $y = $null
+    $inSection = $false
+    foreach ($line in (Get-Content -LiteralPath $rainmeterIni)) {
+        if ($line -match '^\s*\[(.+)\]\s*$') { $inSection = ($Matches[1] -ieq 'CodexMonitor'); continue }
+        if ($inSection) {
+            if ($line -match '^\s*WindowX=(-?\d+)') { $x = [int]$Matches[1] }
+            elseif ($line -match '^\s*WindowY=(-?\d+)') { $y = [int]$Matches[1] }
+        }
+    }
+
+    if ($null -eq $x -or $null -eq $y) { return $null }
+    return @{ X = $x; Y = $y }
+}
+
+function Move-WidgetToPrimary {
+    $target = Get-TargetPosition
+    $screen = $target.Screen
+    $width = Get-WidgetWidth
+    $x = $target.X
+    $Y = $target.Y
     $signature = "$($screen.X),$($screen.Y),$($screen.Width),$($screen.Height),$width"
 
     $rainmeterExe = if ($config.rainmeter.executable) { $config.rainmeter.executable } else { "C:\Program Files\Rainmeter\Rainmeter.exe" }
@@ -440,11 +476,24 @@ while ($true) {
 
         Add-Type -AssemblyName System.Windows.Forms
         $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-        Switch-ProfileIfNeeded -ScreenBounds $screen
+        $switched = Switch-ProfileIfNeeded -ScreenBounds $screen
         $width = Get-WidgetWidth
         $signature = "$($screen.X),$($screen.Y),$($screen.Width),$($screen.Height),$width"
-        if ($signature -ne $lastSignature) {
-            $lastSignature = Move-WidgetToPrimary
+
+        if ($switched) {
+            # The profile switcher already refreshed and repositioned the widget;
+            # record the new signature and skip the duplicate move this cycle.
+            $lastSignature = $signature
+        }
+        else {
+            # Re-pin if the screen/width changed, OR if the widget drifted away from
+            # the target corner (Rainmeter refresh/restart, manual drag, DPI change).
+            $target = Get-TargetPosition
+            $current = Get-CurrentPosition
+            $drifted = ($null -eq $current) -or ($current.X -ne $target.X) -or ($current.Y -ne $target.Y)
+            if ($signature -ne $lastSignature -or $drifted) {
+                $lastSignature = Move-WidgetToPrimary
+            }
         }
     }
     catch {

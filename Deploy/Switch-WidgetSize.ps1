@@ -111,7 +111,9 @@ function Set-PrimaryMonitorPosition {
     $widgetWidth = Get-WidgetWidth -Path $SkinIni
     $marginRight = if ($config.display.marginRight -ne $null) { [int]$config.display.marginRight } else { 24 }
     $marginTop = if ($config.display.marginTop -ne $null) { [int]$config.display.marginTop } else { 24 }
-    $x = [int]($screen.X + $screen.Width - $widgetWidth - $marginRight)
+    # Anchor by the right edge (AnchorX=100% below): WindowX is the right edge,
+    # so it lands $marginRight from the screen edge regardless of real width.
+    $x = [int]($screen.X + $screen.Width - $marginRight)
     $Y = [int]($screen.Y + $marginTop)
     $rainmeterIni = Join-Path $env:APPDATA "Rainmeter\Rainmeter.ini"
 
@@ -120,7 +122,7 @@ function Set-PrimaryMonitorPosition {
         foreach ($line in (Get-Content -LiteralPath $rainmeterIni)) { $lines.Add($line) }
         Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "WindowX" -Value $x
         Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "WindowY" -Value $y
-        Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "AnchorX" -Value 0
+        Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "AnchorX" -Value "100%"
         Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "AnchorY" -Value 0
         Set-IniKey -Lines $lines -Section "CodexMonitor" -Key "AutoSelectScreen" -Value 0
         Set-Content -LiteralPath $rainmeterIni -Value $lines -Encoding Unicode

@@ -460,26 +460,52 @@ static (float? Temp, float? FanPct)? QueryNvidiaSmi()
         CreateNoWindow = true
     };
 
-    using var process = Process.Start(psi);
-    if (process is null)
+    Process? process = null;
+    try
+    {
+        process = Process.Start(psi);
+        if (process is null)
+        {
+            return null;
+        }
+
+        // Read stdout asynchronously so it drains while the process runs (avoids the
+        // classic ReadToEnd/WaitForExit deadlock), and enforce a hard timeout. If
+        // nvidia-smi hangs we kill it instead of blocking the whole bridge loop.
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        if (!process.WaitForExit(3000))
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+            return null;
+        }
+
+        if (!outputTask.Wait(1000))
+        {
+            return null;
+        }
+
+        var output = outputTask.Result.Trim();
+        if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
+        {
+            return null;
+        }
+
+        var parts = output.Split(',', StringSplitOptions.TrimEntries);
+        if (parts.Length < 2)
+        {
+            return null;
+        }
+
+        return (ParseFloat(parts[0]), ParseFloat(parts[1]));
+    }
+    catch
     {
         return null;
     }
-
-    var output = process.StandardOutput.ReadToEnd().Trim();
-    process.WaitForExit(3000);
-    if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
+    finally
     {
-        return null;
+        process?.Dispose();
     }
-
-    var parts = output.Split(',', StringSplitOptions.TrimEntries);
-    if (parts.Length < 2)
-    {
-        return null;
-    }
-
-    return (ParseFloat(parts[0]), ParseFloat(parts[1]));
 }
 
 static float? ParseFloat(string value)
@@ -617,15 +643,22 @@ static (double EthInMbps, double EthOutMbps, double WifiInMbps, double WifiOutMb
 static void SafeWriteAllText(string path, string content)
 {
     const int maxRetries = 5;
+    // Write to a sibling temp file, then atomically replace the target. A reader
+    // (Rainmeter's WebParser) therefore always sees either the complete old file
+    // or the complete new file, never a half-written/truncated one. This avoids
+    // the all-zeros flash that happened when FileMode.Create truncated the file
+    // mid-read.
+    var tempPath = path + ".tmp";
     for (int i = 0; i < maxRetries; i++)
     {
         try
         {
-            using (var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.ReadWrite))
+            using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
             using (var writer = new StreamWriter(fs, Encoding.ASCII))
             {
                 writer.Write(content);
             }
+            File.Move(tempPath, path, overwrite: true);
             return;
         }
         catch (IOException)
