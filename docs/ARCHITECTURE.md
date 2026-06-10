@@ -176,7 +176,7 @@ C:\CodexMonitor\Deploy\Switch-WidgetSize.ps1
 
 Modes:
 
-- `Auto`: primary monitor height >= 1440 uses 4K, otherwise 1080p (height is the true physical resolution from `GetDeviceCaps`, not the DPI-virtualized `Bounds`);
+- `Auto`: primary monitor height >= 1600 uses 4K, otherwise 1080p, so 2560x1440 (2K) gets the compact profile and only true 4K-height screens get the large one (height is the true physical resolution from `GetDeviceCaps`, not the DPI-virtualized `Bounds`);
 - `1080p`: force compact profile;
 - `4K`: force larger profile.
 

@@ -104,11 +104,39 @@ function Get-WidgetWidth {
     return 430
 }
 
+function Get-PhysicalPrimaryBounds {
+    Add-Type -AssemblyName System.Windows.Forms
+    if (-not ('CxDisplay' -as [type])) {
+        Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class CxDisplay {
+    [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+    [DllImport("gdi32.dll")] public static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
+}
+"@
+    }
+    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $w = $screen.Width; $h = $screen.Height
+    $dc = [CxDisplay]::GetDC([IntPtr]::Zero)
+    if ($dc -ne [IntPtr]::Zero) {
+        try {
+            $pw = [CxDisplay]::GetDeviceCaps($dc, 118) # DESKTOPHORZRES
+            $ph = [CxDisplay]::GetDeviceCaps($dc, 117) # DESKTOPVERTRES
+            if ($pw -gt 0) { $w = $pw }
+            if ($ph -gt 0) { $h = $ph }
+        } finally {
+            [void][CxDisplay]::ReleaseDC([IntPtr]::Zero, $dc)
+        }
+    }
+    return [pscustomobject]@{ X = [int]$screen.X; Y = [int]$screen.Y; Width = [int]$w; Height = [int]$h }
+}
+
 function Get-PrimaryMonitorPosition {
     param([string]$SkinIni)
 
-    Add-Type -AssemblyName System.Windows.Forms
-    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $screen = Get-PhysicalPrimaryBounds
     $widgetWidth = Get-WidgetWidth -Path $SkinIni
     $marginRight = if ($config.display.marginRight -ne $null) { [int]$config.display.marginRight } else { 24 }
     $marginTop = if ($config.display.marginTop -ne $null) { [int]$config.display.marginTop } else { 24 }

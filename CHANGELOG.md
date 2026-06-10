@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-06-11
+
+- Routed 2560x1440 (2K) screens to the compact (1080p) profile by raising the default `autoProfileHeightThreshold` from 1440 to 1600. The 4K preset (720 px wide) was oversized on a 2K monitor (~28% of the screen); the compact preset reads closer to how it looks on native FullHD. Only true 4K-height screens (>= 1600) now get the large profile.
+- Applied the same physical-resolution detection (`GetDeviceCaps(DESKTOPHORZRES/DESKTOPVERTRES)`) to `Install-CodexMonitor.ps1`, so the initial widget position is correct even when the installer runs in a DPI-virtualized context.
+
 ## 2026-06-10
 
 - Fixed the widget rendering at the wrong size and floating away from the corner on a 4K screen after roaming from an RDP/FullHD session. The display watcher is a long-lived System-DPI-aware `powershell.exe`, so `[Screen]::PrimaryScreen.Bounds` stayed virtualized against the DPI context captured at process start (a 4K@100% screen reported as 1920x1080), making the watcher repeatedly force the 1080p preset and a `WindowX` computed for 1920 px. `Watch-PrimaryDisplay.ps1` and `Switch-WidgetSize.ps1` now read the true physical resolution via `GetDeviceCaps(DESKTOPHORZRES/DESKTOPVERTRES)`, which is immune to the per-process DPI virtualization.

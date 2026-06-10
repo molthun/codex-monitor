@@ -341,7 +341,7 @@ function Get-AutoProfileMode {
         return $config.profiles.default
     }
 
-    $threshold = if ($config.display.autoProfileHeightThreshold -ne $null) { [int]$config.display.autoProfileHeightThreshold } else { 1440 }
+    $threshold = if ($config.display.autoProfileHeightThreshold -ne $null) { [int]$config.display.autoProfileHeightThreshold } else { 1600 }
     $largeProfile = if ($config.profiles.large) { $config.profiles.large } else { "4K" }
     $compactProfile = if ($config.profiles.compact) { $config.profiles.compact } else { "1080p" }
     if ($ScreenHeight -ge $threshold) { return $largeProfile }

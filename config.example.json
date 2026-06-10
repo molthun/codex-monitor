@@ -25,7 +25,7 @@
     "marginRight": 24,
     "marginTop": 24,
     "watchIntervalSeconds": 5,
-    "autoProfileHeightThreshold": 1440,
+    "autoProfileHeightThreshold": 1600,
     "autoUpdate": true
   },
   "profiles": {
