@@ -25,6 +25,46 @@ function Test-Command {
     return [bool](Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
+# Returns the TRUE physical bounds of the primary monitor.
+#
+# This watcher is a long-lived Windows PowerShell (powershell.exe) process, which
+# is System-DPI-aware via its manifest. For such a process,
+# [System.Windows.Forms.Screen]::PrimaryScreen.Bounds returns coordinates
+# virtualized against the DPI context captured at PROCESS START. When the display
+# (or its scaling) changes afterwards - e.g. roaming between a local 4K screen and
+# an RDP/FullHD session - Bounds keeps reporting the stale dimensions (a 4K@100%
+# screen looks like 1920x1080), so the profile/position logic picks the wrong
+# preset and corner. GetDeviceCaps(DESKTOPHORZRES/DESKTOPVERTRES) is NOT subject
+# to this virtualization and always reports real physical pixels.
+function Get-PhysicalPrimaryBounds {
+    Add-Type -AssemblyName System.Windows.Forms
+    if (-not ('CxDisplay' -as [type])) {
+        Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class CxDisplay {
+    [DllImport("user32.dll")] public static extern IntPtr GetDC(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+    [DllImport("gdi32.dll")] public static extern int GetDeviceCaps(IntPtr hdc, int nIndex);
+}
+"@
+    }
+    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $w = $screen.Width; $h = $screen.Height
+    $dc = [CxDisplay]::GetDC([IntPtr]::Zero)
+    if ($dc -ne [IntPtr]::Zero) {
+        try {
+            $pw = [CxDisplay]::GetDeviceCaps($dc, 118) # DESKTOPHORZRES
+            $ph = [CxDisplay]::GetDeviceCaps($dc, 117) # DESKTOPVERTRES
+            if ($pw -gt 0) { $w = $pw }
+            if ($ph -gt 0) { $h = $ph }
+        } finally {
+            [void][CxDisplay]::ReleaseDC([IntPtr]::Zero, $dc)
+        }
+    }
+    return [pscustomobject]@{ X = [int]$screen.X; Y = [int]$screen.Y; Width = [int]$w; Height = [int]$h }
+}
+
 function Show-Notification {
     param([string]$Title, [string]$Message)
     try {
@@ -176,7 +216,7 @@ function Check-ForUpdates {
             Copy-Item -LiteralPath "$payloadIcons\*" -Destination $targetIcons -Force
         }
 
-        $mode = Get-AutoProfileMode -ScreenHeight ([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height)
+        $mode = Get-AutoProfileMode -ScreenHeight ((Get-PhysicalPrimaryBounds).Height)
         $preset = Get-PresetPath -Mode $mode
         if (-not $preset) {
             throw "Could not find a Rainmeter preset for mode $mode."
@@ -321,7 +361,7 @@ function Get-PresetPath {
 }
 
 function Switch-ProfileIfNeeded {
-    param([System.Drawing.Rectangle]$ScreenBounds)
+    param($ScreenBounds)
 
     if ($config.profiles.auto -eq $false) { return $false }
 
@@ -418,8 +458,7 @@ function Save-Position {
 }
 
 function Get-TargetPosition {
-    Add-Type -AssemblyName System.Windows.Forms
-    $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+    $screen = Get-PhysicalPrimaryBounds
     $marginRight = if ($config.display.marginRight -ne $null) { [int]$config.display.marginRight } else { 24 }
     $marginTop = if ($config.display.marginTop -ne $null) { [int]$config.display.marginTop } else { 24 }
     # Anchor the skin by its right edge (AnchorX=100% in Save-Position), so the
@@ -484,8 +523,7 @@ while ($true) {
             $lastPrereqCheck = Get-Date
         }
 
-        Add-Type -AssemblyName System.Windows.Forms
-        $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+        $screen = Get-PhysicalPrimaryBounds
         $switched = Switch-ProfileIfNeeded -ScreenBounds $screen
         $width = Get-WidgetWidth
         $signature = "$($screen.X),$($screen.Y),$($screen.Width),$($screen.Height),$width"

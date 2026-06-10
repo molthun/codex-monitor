@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-06-10
+
+- Fixed the widget rendering at the wrong size and floating away from the corner on a 4K screen after roaming from an RDP/FullHD session. The display watcher is a long-lived System-DPI-aware `powershell.exe`, so `[Screen]::PrimaryScreen.Bounds` stayed virtualized against the DPI context captured at process start (a 4K@100% screen reported as 1920x1080), making the watcher repeatedly force the 1080p preset and a `WindowX` computed for 1920 px. `Watch-PrimaryDisplay.ps1` and `Switch-WidgetSize.ps1` now read the true physical resolution via `GetDeviceCaps(DESKTOPHORZRES/DESKTOPVERTRES)`, which is immune to the per-process DPI virtualization.
+
 ## 2026-06-06
 
 - Fixed widget corner pinning and auto-size: anchor the skin by its right edge (`AnchorX=100%`) so positioning no longer depends on the dynamic widget width, and re-pin the widget when it drifts (Rainmeter refresh/restart, manual drag, DPI change) instead of only on a resolution change. Removed the duplicate move that caused a visible jump on profile switches.

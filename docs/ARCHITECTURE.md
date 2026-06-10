@@ -160,6 +160,7 @@ C:\CodexMonitor\Watch-PrimaryDisplay.ps1
 Responsibilities:
 
 - poll primary monitor every 5 seconds;
+- detect the primary monitor's *true physical* resolution via `GetDeviceCaps(DESKTOPHORZRES/DESKTOPVERTRES)` rather than `[Screen]::PrimaryScreen.Bounds`. The watcher is a long-lived System-DPI-aware `powershell.exe`, so `Bounds` is virtualized against the DPI context captured at process start and reports stale dimensions after the display/scaling changes (e.g. a 4K@100% screen looks like 1920x1080 when the watcher started in an RDP/FullHD session). `GetDeviceCaps` is immune to this virtualization;
 - switch automatically between 1080p and 4K profiles when the primary monitor height crosses the configured threshold;
 - read current widget width from active skin;
 - move widget to top-right of primary monitor with 24 px margin;
@@ -175,7 +176,7 @@ C:\CodexMonitor\Deploy\Switch-WidgetSize.ps1
 
 Modes:
 
-- `Auto`: primary monitor height >= 1440 uses 4K, otherwise 1080p;
+- `Auto`: primary monitor height >= 1440 uses 4K, otherwise 1080p (height is the true physical resolution from `GetDeviceCaps`, not the DPI-virtualized `Bounds`);
 - `1080p`: force compact profile;
 - `4K`: force larger profile.
 
