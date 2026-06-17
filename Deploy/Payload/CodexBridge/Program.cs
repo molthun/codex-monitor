@@ -126,6 +126,11 @@ do
             gpuCore = nvidiaGpu.Value.Temp ?? gpuCore;
             gpuFanPct = nvidiaGpu.Value.FanPct ?? gpuFanPct;
         }
+        var vramUsedMb = nvidiaGpu?.VramUsedMb;
+        var vramTotalMb = nvidiaGpu?.VramTotalMb;
+        var vramPct = vramUsedMb.HasValue && vramTotalMb.HasValue && vramTotalMb.Value > 0
+            ? vramUsedMb.Value / vramTotalMb.Value * 100
+            : (float?)null;
 
         // 4. Board/System Fans (Excluding CPU fan & GPU fan)
         var boardFansArray = new float?[7];
@@ -201,6 +206,9 @@ do
             .Append($"GPUCore={Round(gpuCore)}\n")
             .Append($"GPUHotspot={Round(gpuHotspot)}\n")
             .Append($"GPUMemory={Round(gpuMemory)}\n")
+            .Append($"VRAMUsedMB={Round(vramUsedMb)}\n")
+            .Append($"VRAMTotalMB={Round(vramTotalMb)}\n")
+            .Append($"VRAMPct={Round(vramPct)}\n")
             .Append($"GPUFan={Round(gpuFan)}\n")
             .Append($"GPUFanPct={Round(gpuFanPct)}\n")
             .Append($"CPUFan={Round(cpuFan)}\n")
@@ -381,6 +389,11 @@ static void TryWriteNvidiaFallback(string outFile)
         }
 
         existing["GPUCore"] = Round(gpu.Value.Temp);
+        existing["VRAMUsedMB"] = Round(gpu.Value.VramUsedMb);
+        existing["VRAMTotalMB"] = Round(gpu.Value.VramTotalMb);
+        existing["VRAMPct"] = gpu.Value.VramUsedMb.HasValue && gpu.Value.VramTotalMb.HasValue && gpu.Value.VramTotalMb.Value > 0
+            ? Round(gpu.Value.VramUsedMb.Value / gpu.Value.VramTotalMb.Value * 100)
+            : Get(existing, "VRAMPct");
         existing["GPUFan"] = "0";
         existing["GPUFanPct"] = Round(gpu.Value.FanPct);
         existing["BridgeSource"] = "NvidiaSmiFallback";
@@ -390,6 +403,9 @@ static void TryWriteNvidiaFallback(string outFile)
             .Append($"GPUCore={Get(existing, "GPUCore")}\n")
             .Append($"GPUHotspot={Get(existing, "GPUHotspot")}\n")
             .Append($"GPUMemory={Get(existing, "GPUMemory")}\n")
+            .Append($"VRAMUsedMB={Get(existing, "VRAMUsedMB")}\n")
+            .Append($"VRAMTotalMB={Get(existing, "VRAMTotalMB")}\n")
+            .Append($"VRAMPct={Get(existing, "VRAMPct")}\n")
             .Append($"GPUFan={Get(existing, "GPUFan")}\n")
             .Append($"GPUFanPct={Get(existing, "GPUFanPct")}\n")
             .Append($"CPUFan={Get(existing, "CPUFan")}\n")
@@ -448,12 +464,12 @@ static string Get(Dictionary<string, string> values, string key)
     return values.TryGetValue(key, out var value) ? value : "0";
 }
 
-static (float? Temp, float? FanPct)? QueryNvidiaSmi()
+static (float? Temp, float? FanPct, float? VramUsedMb, float? VramTotalMb)? QueryNvidiaSmi()
 {
     var psi = new ProcessStartInfo
     {
         FileName = "nvidia-smi.exe",
-        Arguments = "--query-gpu=temperature.gpu,fan.speed --format=csv,noheader,nounits",
+        Arguments = "--query-gpu=temperature.gpu,fan.speed,memory.used,memory.total --format=csv,noheader,nounits",
         RedirectStandardOutput = true,
         RedirectStandardError = true,
         UseShellExecute = false,
@@ -496,7 +512,11 @@ static (float? Temp, float? FanPct)? QueryNvidiaSmi()
             return null;
         }
 
-        return (ParseFloat(parts[0]), ParseFloat(parts[1]));
+        return (
+            ParseFloat(parts[0]),
+            ParseFloat(parts[1]),
+            parts.Length > 2 ? ParseFloat(parts[2]) : null,
+            parts.Length > 3 ? ParseFloat(parts[3]) : null);
     }
     catch
     {

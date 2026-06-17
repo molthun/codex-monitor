@@ -19,6 +19,7 @@ The widget is intentionally configured as part of the desktop, not as an always-
 - CPU load, CPU temperature, CPU fan RPM.
 - RAM usage.
 - GPU load, GPU temperature, GPU fan RPM and percent.
+- Dedicated VRAM used/total and usage percent.
 - Board/case/PSU fan display based on hardware sensor mapping.
 - Ethernet, Wi-Fi, and Wi-Fi AP traffic split.
 - Network graph and download/upload bars.

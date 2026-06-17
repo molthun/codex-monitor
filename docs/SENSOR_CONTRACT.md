@@ -15,6 +15,9 @@ CPU=42
 GPUCore=46
 GPUHotspot=0
 GPUMemory=0
+VRAMUsedMB=461
+VRAMTotalMB=12282
+VRAMPct=4
 GPUFan=0
 GPUFanPct=0
 CPUFan=1536
@@ -46,6 +49,9 @@ BridgeSource=LibreHardwareMonitor+NvidiaSmi
 - `GPUCore`: GPU core temperature in Celsius.
 - `GPUHotspot`: GPU hotspot temperature if available.
 - `GPUMemory`: GPU memory temperature if available.
+- `VRAMUsedMB`: dedicated GPU memory currently used, in MB, when reported by `nvidia-smi`.
+- `VRAMTotalMB`: total dedicated GPU memory, in MB, when reported by `nvidia-smi`.
+- `VRAMPct`: dedicated GPU memory usage percent.
 - `GPUFan`: GPU fan speed in RPM if available.
 - `GPUFanPct`: GPU fan speed percent if available.
 - `CPUFan`: CPU cooler RPM.
