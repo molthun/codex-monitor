@@ -681,8 +681,11 @@ static void SafeWriteAllText(string path, string content)
             File.Move(tempPath, path, overwrite: true);
             return;
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // Windows throws UnauthorizedAccessException (not IOException) for some
+            // transient sharing/lock conditions: AV scanning the .tmp file, or a
+            // reader holding the target open during File.Move. Retry those too.
             if (i == maxRetries - 1)
             {
                 throw;
