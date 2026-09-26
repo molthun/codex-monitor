@@ -4,7 +4,8 @@ Linux port of the CodexMonitor desktop widget. Same layout, colors and health
 thresholds as the Rainmeter skin, rendered by a GNOME Shell extension that sits
 on the desktop under all windows (click-through, not in Alt+Tab).
 
-Tested on Ubuntu 26.04, GNOME Shell 50 (Wayland), NVIDIA RTX 4070.
+Tested on Ubuntu 26.04, GNOME Shell 50 (Wayland), 2560×1440, NVIDIA RTX 4070,
+ASRock B460 Phantom Gaming 4 (fans via nct6775).
 
 ## How it works
 
@@ -46,8 +47,8 @@ Remove with `./uninstall.sh` (your config is kept).
 
 ### Motherboard fans
 
-Fan RPMs come from the SuperIO chip driver. For Nuvoton chips (e.g. NCT6796D on
-ASRock B460) load `nct6775`:
+Fan RPMs come from the SuperIO chip driver. For Nuvoton chips (e.g. NCT6798 on
+ASRock B460 Phantom Gaming 4) load `nct6775`:
 
 ```bash
 sudo modprobe nct6775
