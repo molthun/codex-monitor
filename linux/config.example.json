@@ -1,0 +1,35 @@
+{
+  "bridge": {
+    "updateSeconds": 1,
+    "outputFile": ""
+  },
+  "fans": {
+    "chip": "nct",
+    "cpu": "fan1",
+    "case": "fan2",
+    "psu": "fan7"
+  },
+  "disks": [
+    "/",
+    "/srv/ssd",
+    "/srv/storage"
+  ],
+  "network": {
+    "ignoreAdaptersContaining": ["lo", "docker", "veth", "br-", "virbr", "vnet", "tun", "tap", "wg", "tailscale", "zt"],
+    "wifiPrefixes": ["wl"],
+    "ethernetPrefixes": ["en", "eth"]
+  },
+  "widget": {
+    "profile": "Auto",
+    "autoProfileThresholds": { "2K": 1400, "4K": 2000 },
+    "marginRight": 24,
+    "marginTop": 24,
+    "netMaxMbps": 1000,
+    "diskIOMaxMBs": 1000,
+    "diskLabels": {
+      "/": "System",
+      "/srv/ssd": "SSD",
+      "/srv/storage": "Storage"
+    }
+  }
+}
