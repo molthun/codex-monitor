@@ -6,3 +6,5 @@
 *.csproj text eol=crlf
 *.txt text eol=crlf
 *.json text eol=crlf
+linux/** text=auto eol=lf
+linux/**/*.png binary
