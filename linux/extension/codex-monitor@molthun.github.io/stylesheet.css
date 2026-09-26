@@ -1,0 +1,18 @@
+/* Sizes are set inline from extension.js so the 1080p/4K profiles can scale them. */
+.codex-monitor {
+  background-color: rgba(10, 13, 18, 0.93);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: "Ubuntu Sans", "Cantarell", sans-serif;
+  color: rgba(238, 243, 247, 0.96);
+}
+
+.codex-muted { color: rgba(154, 166, 178, 0.92); }
+.codex-rule { background-color: rgba(255, 255, 255, 0.094); }
+.codex-track { background-color: rgba(255, 255, 255, 0.118); }
+
+.codex-health {
+  background-color: rgba(78, 205, 196, 0.024);
+  border: 1px solid rgba(78, 205, 196, 0.125);
+}
+
+.codex-graph { background-color: rgba(255, 255, 255, 0.031); }

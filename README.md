@@ -14,6 +14,10 @@ The widget is intentionally configured as part of the desktop, not as an always-
 - Optional local staging/reinstall kit: `<LocalStagingFolder>`
 - Source of truth for collaboration: GitHub repository
 
+## Linux
+
+A GNOME Shell port lives in [`linux/`](linux/README.md): same widget as a GNOME extension plus a Python sensor bridge.
+
 ## Main Features
 
 - CPU load, CPU temperature, CPU fan RPM.
