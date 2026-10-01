@@ -102,8 +102,11 @@ LAN means private, link-local and multicast addresses plus on-link subnets; ever
 else is Internet.
 
 **Top processes** lists who is using the network right now, from the kernel's per-socket
-TCP counters (`ss`); the dot shows whether the process talks mostly to the Internet or the
-LAN. Processes of other users appear as `system`. UDP (QUIC in browsers, games) has no
+TCP counters (`ss`); the dot shows whether the app talks mostly to the Internet or the LAN.
+Rows show application names and icons from installed `.desktop` files (matched by the
+executable, its snap package or its install directory), so a browser's many processes add
+up to one row. Helpers inside another app are shown with it (`claude · Visual Studio Code`),
+and system services by their systemd description. UDP (QUIC in browsers, games) has no
 per-process counters and shows up as `UDP / other` when it is a noticeable share.
 
 By default the Internet/LAN split is **estimated** from those TCP connections (`est.` next

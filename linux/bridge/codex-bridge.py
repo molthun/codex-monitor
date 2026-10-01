@@ -12,7 +12,9 @@ Modes:
 import ipaddress
 import json
 import os
+import pwd
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -330,38 +332,221 @@ def parse_addr(text):
     return ip.ipv4_mapped or ip if ip.version == 6 else ip
 
 
-class ProcessTraffic:
-    """Per-process TCP throughput from the kernel's per-socket byte counters (ss / tcp_info).
+def unescape_unit(name):
+    """systemd escapes '-' inside unit name parts as \\x2d."""
+    return re.sub(r"\\x([0-9a-fA-F]{2})", lambda m: chr(int(m.group(1), 16)), name)
 
-    Sockets owned by other users have no visible process unless the bridge runs as root;
-    they are grouped as "system". UDP (QUIC, games, uTP) has no per-socket counters, so the
+
+class AppResolver:
+    """Turns a process (or a systemd unit) into a readable application name and icon.
+
+    1. The executable is matched against installed .desktop files: exact path, snap
+       package, or the application's own directory (/opt/yandex/browser/...).
+    2. Otherwise the app whose cgroup the process runs in names it: "claude · Visual Studio Code".
+    3. Sockets without a visible process (other users, services) use the systemd unit description.
+    """
+    # Directories shared by many programs: an executable there says nothing about its app.
+    SHARED_DIRS = {"/", "/bin", "/sbin", "/usr", "/usr/bin", "/usr/sbin", "/usr/local", "/usr/local/bin",
+                   "/usr/local/sbin", "/usr/lib", "/usr/lib64", "/usr/libexec", "/usr/share", "/opt",
+                   "/snap", "/snap/bin", os.path.expanduser("~"), os.path.expanduser("~/.local/bin")}
+    INTERPRETERS = re.compile(r"^(python[\d.]*|node|nodejs|java|perl|ruby|bash|sh|dash|gjs|electron\d*)$")
+    SNAP_DESKTOP_DIR = "/var/lib/snapd/desktop/applications"
+
+    def __init__(self):
+        lang = (os.environ.get("LC_MESSAGES") or os.environ.get("LANG") or "C").split(".")[0]
+        self.name_keys = [f"Name[{lang}]", f"Name[{lang.split('_')[0]}]", "Name"]
+        self.indexed_at = -1e9
+        self.cache = {}
+        self.units = {}
+
+    # ---------------------------------------------------------- .desktop index
+
+    def _desktop_dirs(self):
+        data_dirs = [os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")]
+        data_dirs += (os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share").split(":")
+        data_dirs += ["/var/lib/snapd/desktop", "/var/lib/flatpak/exports/share",
+                      os.path.expanduser("~/.local/share/flatpak/exports/share")]
+        seen = []
+        for d in data_dirs:
+            d = os.path.join(d, "applications")
+            if d not in seen and os.path.isdir(d):
+                seen.append(d)
+        return seen
+
+    @staticmethod
+    def _parse(path):
+        entry, inside = {}, False
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("["):
+                        if inside:
+                            break
+                        inside = line == "[Desktop Entry]"
+                    elif inside and "=" in line and not line.startswith("#"):
+                        key, value = line.split("=", 1)
+                        entry[key.strip()] = value.strip()
+        except OSError:
+            return None
+        return entry
+
+    def _program(self, command, depth=0):
+        """First real program of an Exec line, looking through env, VAR=value and sh -c '...'."""
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            tokens = command.split()
+        i = 0
+        while i < len(tokens):
+            token, base = tokens[i], os.path.basename(tokens[i])
+            if base == "env" or ("=" in token and not token.startswith("/")):
+                i += 1
+            elif base in ("sh", "bash", "dash") and tokens[i + 1:i + 2] == ["-c"] and len(tokens) > i + 2:
+                return self._program(tokens[i + 2], depth + 1) if depth < 2 else None
+            else:
+                token = token.replace("${HOME}", "$HOME").replace("$HOME", os.path.expanduser("~"))
+                path = os.path.expanduser(token) if token.startswith(("/", "~")) else shutil.which(token)
+                return os.path.realpath(path) if path and os.path.exists(path) else None
+        return None
+
+    def _index(self):
+        if time.monotonic() - self.indexed_at < 300:
+            return
+        self.indexed_at = time.monotonic()
+        self.cache.clear()
+        self.by_id, self.by_path, self.by_dir, self.snaps = {}, {}, {}, {}
+        for directory in self._desktop_dirs():
+            for root, _, files in os.walk(directory):
+                for file in files:
+                    if not file.endswith(".desktop"):
+                        continue
+                    path = os.path.join(root, file)
+                    desktop_id = os.path.relpath(path, directory).replace("/", "-")
+                    entry = self._parse(path)
+                    if (not entry or entry.get("Type", "Application") != "Application"
+                            or entry.get("Hidden") == "true" or desktop_id in self.by_id):
+                        continue
+                    app = {"name": next((entry[k] for k in self.name_keys if entry.get(k)), file[:-8]),
+                           "icon": entry.get("Icon"), "visible": entry.get("NoDisplay") != "true"}
+                    self.by_id[desktop_id] = app
+                    if directory == self.SNAP_DESKTOP_DIR:
+                        self._prefer(self.snaps, desktop_id.split("_", 1)[0], app)
+                    for command in (entry.get("TryExec"), entry.get("Exec")):
+                        program = self._program(command) if command else None
+                        if program:
+                            self._prefer(self.by_path, program, app)
+                            if os.path.dirname(program) not in self.SHARED_DIRS:
+                                self._prefer(self.by_dir, os.path.dirname(program), app)
+
+    @staticmethod
+    def _prefer(table, key, app):
+        # Menu entries beat hidden helpers (URL handlers, "open file" entries).
+        if key not in table or (app["visible"] and not table[key]["visible"]):
+            table[key] = app
+
+    def _match(self, path):
+        if not path:
+            return None
+        if path in self.by_path:
+            return self.by_path[path]
+        snap = re.match(r"/snap/([^/]+)/", path)
+        if snap and snap.group(1) in self.snaps:
+            return self.snaps[snap.group(1)]
+        directory = os.path.dirname(path)
+        while directory not in self.SHARED_DIRS and len(directory) > 1:
+            if directory in self.by_dir:
+                return self.by_dir[directory]
+            directory = os.path.dirname(directory)
+        return None
+
+    def _app_of_cgroup(self, cgroup):
+        unit = unescape_unit(cgroup.rsplit("/", 1)[-1]) if cgroup else ""
+        snap = re.match(r"snap\.([^.]+)\.([^.]+?)(?:-[0-9a-f-]{8,})?\.(?:scope|service)$", unit)
+        if snap:
+            return self.by_id.get(f"{snap.group(1)}_{snap.group(2)}.desktop") or self.snaps.get(snap.group(1))
+        app = re.match(r"app-(?:(?:gnome|flatpak|kde|xfce|dbus-[^-]+)-)?(.+?)(?:-\d+|-[0-9a-f]{32}|@[0-9a-f]+)?\.(?:scope|service)$", unit)
+        return self.by_id.get(f"{app.group(1)}.desktop") if app else None
+
+    # ---------------------------------------------------------- resolving
+
+    def _unit_description(self, cgroup):
+        """Sockets without a visible process: name them after their systemd unit or user."""
+        unit = unescape_unit(cgroup.rsplit("/", 1)[-1]) if cgroup else ""
+        if not re.search(r"\.(service|socket|scope)$", unit):
+            user = re.search(r"/user-(\d+)\.slice", cgroup or "")
+            if user:
+                try:
+                    return f"user {pwd.getpwuid(int(user.group(1))).pw_name}"
+                except KeyError:
+                    pass
+            return "system"
+        if unit not in self.units:
+            scope = ["--user"] if "/user@" in cgroup else []
+            description = subprocess.run(["systemctl", *scope, "show", "-p", "Description", "--value", unit],
+                                         capture_output=True, text=True).stdout.strip()
+            self.units[unit] = description or re.sub(r"\.(service|socket|scope)$", "", unit)
+        return self.units[unit]
+
+    def resolve(self, comm, pid, cgroup):
+        """Returns (label, icon); icon is a theme icon name, a file path or None."""
+        self._index()
+        key = pid or cgroup
+        if key in self.cache:
+            return self.cache[key]
+        if not pid:
+            result = (self._unit_description(cgroup), "applications-system-symbolic")
+        else:
+            try:
+                exe = os.path.realpath(f"/proc/{pid}/exe")
+                with open(f"/proc/{pid}/cmdline", "rb") as f:
+                    argv = [a.decode(errors="replace") for a in f.read().split(b"\0") if a]
+            except OSError:
+                exe, argv = None, []
+            # comm is cut at 15 characters; argv[0] is the full name unless the program rewrote it.
+            argv0 = os.path.basename(argv[0].split(" ")[0]) if argv else ""
+            name = argv0 if argv0.startswith(comm) else comm
+            if self.INTERPRETERS.match(name):
+                script = next((a for a in argv[1:] if not a.startswith("-")), None)
+                if script:
+                    name = os.path.basename(script)
+                    exe = self._program(script) or exe
+            app = self._match(exe)
+            if app:
+                result = (app["name"], app["icon"])
+            else:
+                owner = self._app_of_cgroup(cgroup)
+                if owner and owner["name"].lower() != name.lower():
+                    result = (f"{name} · {owner['name']}", owner["icon"])
+                else:
+                    result = (owner["name"], owner["icon"]) if owner else (name, None)
+        if len(self.cache) > 4096:
+            self.cache.clear()
+        self.cache[key] = result
+        return result
+
+
+class ProcessTraffic:
+    """Per-application TCP throughput from the kernel's per-socket byte counters (ss / tcp_info).
+
+    Sockets are named by AppResolver and grouped by that name, so a browser's many
+    processes add up to one row. UDP (QUIC, games, uTP) has no per-socket counters, so the
     bridge reports it as the difference between interface traffic and attributed TCP.
     """
     HEAD = re.compile(r'users:\(\("([^"]+)",pid=(\d+)')
+    CGROUP = re.compile(r'\bcgroup:(\S+)')
     KEY = re.compile(r'\b(?:ino|sk):(\S+)')
     BYTES = re.compile(r'\b(bytes_received|bytes_acked):(\d+)')
 
     def __init__(self, classifier):
         self.lan = classifier
+        self.apps = AppResolver()
+        self.icons = {}
         self.prev = None
         self.prev_at = None
-        self.names = {}
-
-    def _name(self, comm, pid):
-        """Full program name: comm is cut at 15 characters, argv[0] is not."""
-        if pid not in self.names:
-            try:
-                with open(f"/proc/{pid}/cmdline", "rb") as f:
-                    argv0 = os.path.basename(f.read().split(b"\0", 1)[0].decode(errors="replace").split(" ")[0])
-            except OSError:
-                argv0 = ""
-            self.names[pid] = argv0 if argv0.startswith(comm) else comm
-            if len(self.names) > 4096:
-                self.names.clear()
-        return self.names[pid]
 
     def sample(self):
-        """Returns ({name: [wanDown, wanUp, lanDown, lanUp] Mbps}, ok)."""
+        """Returns ({app label: [wanDown, wanUp, lanDown, lanUp] Mbps}, ok); icons are in self.icons."""
         if not shutil.which("ss"):
             return {}, False
         out = subprocess.run(["ss", "-tinpHe", "state", "established"],
@@ -383,7 +568,10 @@ class ProcessTraffic:
             counters = dict(self.BYTES.findall(line))
             current[key] = (int(counters.get("bytes_received", 0)), int(counters.get("bytes_acked", 0)))
             proc = self.HEAD.search(head)
-            owners[key] = (self._name(*proc.groups()) if proc else "system", self.lan.is_lan(peer))
+            cgroup = self.CGROUP.search(head)
+            label, icon = self.apps.resolve(*(proc.groups() if proc else ("", None)), cgroup and cgroup.group(1))
+            self.icons[label] = icon
+            owners[key] = (label, self.lan.is_lan(peer))
             head = None
 
         procs = {}
@@ -427,7 +615,7 @@ class NetSplit:
         return self.rates
 
 
-def traffic_split(net, split_rates, procs, procs_ok, top_n):
+def traffic_split(net, split_rates, procs, procs_ok, top_n, icons):
     """Internet/LAN rates (exact from codex-netsplit, else estimated from TCP) and the top processes."""
     down, up = net["NetDownMbps"], net["NetUpMbps"]
     tcp = [sum(p[i] for p in procs.values()) for i in range(4)]
@@ -442,7 +630,7 @@ def traffic_split(net, split_rates, procs, procs_ok, top_n):
         wan_down, wan_up = down - lan_down, up - lan_up
 
     top = sorted(procs.items(), key=lambda kv: -sum(kv[1]))
-    top = [{"name": name, "wanDown": r[0], "wanUp": r[1], "lanDown": r[2], "lanUp": r[3]}
+    top = [{"name": name, "icon": icons.get(name), "wanDown": r[0], "wanUp": r[1], "lanDown": r[2], "lanUp": r[3]}
            for name, r in top[:top_n] if sum(r) >= 0.05]
     return {
         "NetSplitMode": mode,
@@ -592,7 +780,7 @@ def main():
             "PSUFan": fans.get(fan_cfg.get("psu")),
             "FansAvailable": bool(fans),
             **net_data,
-            **traffic_split(net_data, split.sample(), *processes.sample(), top_n),
+            **traffic_split(net_data, split.sample(), *processes.sample(), top_n, processes.icons),
             "Disks": disks.sample(),
             **updates.snapshot(),
             "BridgeSource": "hwmon+NvidiaSmi" if nvidia.latest else "hwmon",

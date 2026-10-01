@@ -387,14 +387,17 @@ class MonitorWidget {
         for (let i = 0; i < TOP_ROWS; i++) {
             const line = new St.BoxLayout({x_expand: true, style: `spacing: ${s(6)}px;`});
             const dot = new St.Widget({y_align: Clutter.ActorAlign.CENTER});
+            const icon = new St.Icon({icon_size: s(BASE.icon), fallback_icon_name: 'application-x-executable-symbolic',
+                y_align: Clutter.ActorAlign.CENTER});
             const name = this._label('', BASE.proc, {expand: true});
             name.clutter_text.ellipsize = Pango.EllipsizeMode.END;
             const value = this._label('', BASE.proc, {align: Clutter.ActorAlign.END});
             line.add_child(dot);
+            line.add_child(icon);
             line.add_child(name);
             line.add_child(value);
             this.actor.add_child(line);
-            this._procRows.push({dot, name, value});
+            this._procRows.push({dot, icon, name, value});
         }
     }
 
@@ -461,9 +464,21 @@ class MonitorWidget {
         row.lanValue.set_style(`font-size: ${s(BASE.label)}px; color: ${COLOR.lan};`);
     }
 
+    // Icon from the bridge: a theme icon name or an absolute file path.
+    _appIcon(icon) {
+        this._icons ??= new Map();
+        icon ||= 'application-x-executable-symbolic';
+        if (!this._icons.has(icon)) {
+            this._icons.set(icon, icon.startsWith('/')
+                ? Gio.FileIcon.new(Gio.File.new_for_path(icon)) : Gio.ThemedIcon.new(icon));
+        }
+        return this._icons.get(icon);
+    }
+
     _setTopProcesses(d, total) {
         const entries = (d.NetTopProcesses || []).map(p => ({
             name: p.name,
+            icon: p.icon,
             down: p.wanDown + p.lanDown,
             up: p.wanUp + p.lanUp,
             color: p.lanDown + p.lanUp > p.wanDown + p.wanUp ? COLOR.lan : COLOR.wan,
@@ -472,7 +487,7 @@ class MonitorWidget {
         const otherDown = d.NetOtherDownMbps ?? 0;
         const otherUp = d.NetOtherUpMbps ?? 0;
         if (otherDown + otherUp >= 1 && otherDown + otherUp > 0.2 * total)
-            entries.push({name: 'UDP / other', down: otherDown, up: otherUp, color: COLOR.muted});
+            entries.push({name: 'UDP / other', icon: 'network-transmit-receive-symbolic', down: otherDown, up: otherUp, color: COLOR.muted});
         entries.sort((a, b) => b.down + b.up - (a.down + a.up));
 
         const s = this._s;
@@ -480,6 +495,8 @@ class MonitorWidget {
             const e = entries[i];
             row.dot.set_style(`width: ${s(6)}px; height: ${s(6)}px; border-radius: ${s(3)}px;` +
                 `background-color: ${e ? e.color : 'transparent'};`);
+            row.icon.gicon = this._appIcon(e?.icon);
+            row.icon.opacity = e ? 255 : 0;
             row.name.text = e ? e.name : i === 0 ? 'No active transfers' : ' ';
             row.name.set_style(`font-size: ${s(BASE.proc)}px;${e ? '' : ` color: ${COLOR.muted};`}`);
             row.value.text = e ? `↓ ${fmtRate(e.down)}  ↑ ${fmtRate(e.up)}` : '';
