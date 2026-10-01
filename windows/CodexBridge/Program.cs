@@ -11,6 +11,27 @@ var configPath = GetArgValue(args, "--config")
     ?? Environment.GetEnvironmentVariable("CODEXMONITOR_CONFIG")
     ?? @"C:\CodexMonitor\config.json";
 
+// Tray icon, started at sign-in without admin rights (one per user session).
+if (args.Any(a => string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase)))
+{
+    using var trayMutex = new Mutex(true, "CodexMonitorTray", out var firstTray);
+    if (!firstTray)
+    {
+        return;
+    }
+    // WinForms needs an STA thread; top-level statements run on an MTA one.
+    var trayThread = new System.Threading.Thread(() =>
+    {
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        Application.Run(new CodexBridge.TrayApp(configPath));
+    });
+    trayThread.SetApartmentState(System.Threading.ApartmentState.STA);
+    trayThread.Start();
+    trayThread.Join();
+    return;
+}
+
 var settingsMode = args.Any(a => string.Equals(a, "--settings", StringComparison.OrdinalIgnoreCase));
 if (settingsMode)
 {

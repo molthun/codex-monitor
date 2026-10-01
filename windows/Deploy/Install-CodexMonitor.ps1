@@ -288,6 +288,15 @@ $shortcut.WorkingDirectory = $InstallRoot
 $shortcut.WindowStyle = 7
 $shortcut.Save()
 
+# Tray icon (show/hide, settings, updates, restart), started at sign-in without admin rights.
+$trayShortcut = Join-Path ([Environment]::GetFolderPath("Startup")) "CodexMonitor Tray.lnk"
+$trayLink = $shell.CreateShortcut($trayShortcut)
+$trayLink.TargetPath = $bridgeExe
+$trayLink.Arguments = "--tray --config `"$configTarget`""
+$trayLink.WorkingDirectory = Split-Path -Parent $bridgeExe
+$trayLink.IconLocation = "$bridgeExe,0"
+$trayLink.Save()
+
 # Create Desktop shortcut for Settings GUI (since the widget is click-through / non-interactive)
 $settingsDesktopShortcutPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "CodexMonitor Settings.lnk"
 $settingsDesktopShortcut = $shell.CreateShortcut($settingsDesktopShortcutPath)
@@ -346,6 +355,8 @@ if (-not $NoStart) {
     if (Test-Path -LiteralPath $sizeSwitcher) {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sizeSwitcher -InstallRoot $InstallRoot -ConfigPath $configTarget | Out-Null
     }
+    # Through Explorer, so the tray runs as the signed-in user, not elevated like this installer.
+    Start-Process -FilePath "explorer.exe" -ArgumentList "`"$trayShortcut`""
     Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watcherScript`" -ConfigPath `"$configTarget`"" -WindowStyle Hidden
     if (Test-Path -LiteralPath $rainmeterExe) {
         if (-not (Get-Process Rainmeter -ErrorAction SilentlyContinue)) {

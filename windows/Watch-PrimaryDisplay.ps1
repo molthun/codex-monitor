@@ -269,9 +269,10 @@ function Install-Release {
     }
 
     # Stop the bridge so its binary can be replaced. It runs elevated, so end it
-    # through its scheduled task first; Stop-Process covers manual runs.
+    # through its scheduled task first; Stop-Process covers the tray icon and manual runs.
     schtasks.exe /end /tn $taskName 2>$null | Out-Null
     Stop-Process -Name "CodexBridge" -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 500
 
     # Copy source files to $InstallRoot, EXCLUDING config.json to preserve user settings.
     Get-ChildItem -Path $extractedRepoDir -Recurse | ForEach-Object {
@@ -340,6 +341,21 @@ function Install-Release {
 
     Set-UpdateStatus ""
     Show-Notification "CodexMonitor Updated" "Widget has been updated to $remote successfully!"
+    Restart-AfterUpdate -BridgeExe $runBridgeExe
+}
+
+# Everything runs the new version without signing out: the tray icon starts again, and this
+# watcher hands over to a fresh copy of itself (the script on disk was just replaced).
+function Restart-AfterUpdate {
+    param([string]$BridgeExe)
+
+    $configFile = if ($ConfigPath) { $ConfigPath } else { Join-Path $InstallRoot "config.json" }
+    if (Test-Path -LiteralPath $BridgeExe) {
+        Start-Process -FilePath $BridgeExe -ArgumentList "--tray --config `"$configFile`""
+    }
+    $watcher = Join-Path $InstallRoot "Watch-PrimaryDisplay.ps1"
+    Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watcher`" -ConfigPath `"$configFile`""
+    exit 0
 }
 
 # "Update now" in the notification leaves update-request.txt (see Request-CodexMonitorUpdate.ps1).
