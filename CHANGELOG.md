@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-01
+
+- Linux: smart network panel. Download and Upload are each one bar split into Internet (blue) and LAN (mint), scaled to the NIC link speed with a tick at the Internet plan speed (`widget.internetDownMbps` / `internetUpMbps`, replaces `netMaxMbps`). The graph is mirrored (download up, upload down), stacked by the same colors, and snaps its scale to round values and the plan speed.
+- Linux: "Top processes" shows which programs use the network now and whether they talk to the Internet or the LAN, from per-socket TCP counters (`ss`); UDP traffic is shown as `UDP / other`.
+- Linux: update notifications. The bridge checks the latest GitHub release every 6 hours; a newer one shows a GNOME notification with "Update now" (downloads the release and reruns `install.sh`, keeping the config) and "Release notes". `install.sh` records the installed version; `update.sh` can also be run by hand.
+- Linux: optional root helper `install-netsplit.sh` (nftables counters) for an exact Internet/LAN split; without it the split is estimated from TCP connections.
+
 ## 2026-06-11
 
 - Routed 2560x1440 (2K) screens to the compact (1080p) profile by raising the default `autoProfileHeightThreshold` from 1440 to 1600. The 4K preset (720 px wide) was oversized on a 2K monitor (~28% of the screen); the compact preset reads closer to how it looks on native FullHD. Only true 4K-height screens (>= 1600) now get the large profile.

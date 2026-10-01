@@ -4,5 +4,5 @@
   "description": "Desktop hardware monitor widget (Linux port of the CodexMonitor Rainmeter skin). Reads metrics written by codex-bridge.py.",
   "shell-version": ["48", "49", "50"],
   "url": "https://github.com/molthun/codex-monitor",
-  "version": 1
+  "version": 2
 }
