@@ -69,11 +69,18 @@ BridgeSource=LibreHardwareMonitor+NvidiaSmi
 - `NetDownWanPct`, `NetDownTotalPct`, `NetUpWanPct`, `NetUpTotalPct`: bar segments in percent of the link speed (`network.lanMbps`, or the NIC speed when 0).
 - `NetPlanDownPct`, `NetPlanUpPct`: Internet plan tick position on the bars (0 = hidden); `NetDownMaxed`, `NetUpMaxed`: 1 when Internet traffic is at >= 90% of the plan.
 - `NetGraphDownWan`, `NetGraphDownTotal`, `NetGraphUpWan`, `NetGraphUpTotal`, `NetGraphPlanDown`, `NetGraphPlanUp`, `NetGraphScaleText`: mirrored graph values in percent of the current graph scale, and the scale label.
-- `NetTop1..3Name`, `NetTop1..3Icon`, `NetTop1..3Text`, `NetTop1..3Scope`: top applications by traffic; the icon is a PNG path relative to `@Resources` (`AppIcons\...`), scope is `wan`, `lan`, `other` (UDP) or `none`.
+- `NetTop1..5Name`, `NetTop1..5Icon`, `NetTop1..5Text`, `NetTop1..5Scope`: top applications by traffic; the icon is a PNG path relative to `@Resources` (`AppIcons\...`), scope is `wan`, `lan`, `other` (UDP) or `none`.
 - `UpdateAvailable`: newer release tag offered by the display watcher (from `update-status.txt`), empty otherwise.
+- `Fan1..FanN`: speed (RPM) of each fan in `fans.list` (or the bridge's default list), in order; `-1` = sensor not found.
+- `Temp1..TempN`: each extra temperature in `temps.list`, in order; `-1` = sensor not found.
 - `BridgeSource`: current bridge data source string.
 
 The file is UTF-8 (application names may be non-ASCII); the skin reads it with `CodePage=65001`.
+
+The key order is defined in `CodexBridge/TempsFile.cs` and used both by the bridge and by the
+generated skin's RegExp (`SkinBuilder.cs`), so they cannot drift apart. Each value stops at its
+line end, and extra `FanN` lines are skipped before the `TempN` block, so a bridge restarted with a
+longer fan list than the skin knows only affects those rows.
 
 ## Network Direction Notes
 

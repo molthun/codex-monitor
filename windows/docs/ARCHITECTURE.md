@@ -112,42 +112,39 @@ C:\CodexMonitor\CodexBridge\CodexBridge.exe --settings --config C:\CodexMonitor\
 
 The PowerShell launcher prepares/updates the local `config.json`, locates the installed or payload bridge executable, and then starts the WinForms settings window. The wizard edits the local ignored config only; public defaults still belong in `config.example.json`.
 
-The wizard currently covers:
+The settings window (also from the tray icon) covers:
 
-- widget profile mode: Auto, 1080p, or 4K;
-- displayed disk rows, up to three local drives;
-- network adapter ignore terms;
-- background update toggle;
-- bridge telemetry update interval.
+- Widget: size (Auto, 1080p, 2K, 4K or a custom percentage), fit to screen, visible sections, top-process rows, show/hide;
+- Hardware: graphics card, fan list and extra temperatures (with live values from `inventory.json`), up to six drives with names;
+- Network: adapter roles, ignore terms, Internet plan and LAN full scale;
+- Updates: notify / install silently / off, Check now and Install, bridge refresh interval.
+
+Saving writes `config.json`, restarts the bridge task and rebuilds the skin.
 
 ### Rainmeter Skin
 
-Active file:
+Active file (generated, do not edit by hand):
 
 ```text
 <RainmeterSkinPath>\CodexMonitor\CodexMonitor.ini
 ```
 
-Working copy:
-
-```text
-C:\CodexMonitor\CodexMonitor.ini
-```
-
-Presets:
-
-```text
-C:\CodexMonitor\Presets\CodexMonitor.1080p.ini
-C:\CodexMonitor\Presets\CodexMonitor.4K.ini
-```
+`CodexBridge.exe --build-skin --out <file> --screen-height <px>` writes it from `config.json`
+(`SkinBuilder.cs`): sections, rows, sizes and the WebParser RegExp all come from the same settings
+the bridge uses, and the temps.txt key order is defined once in `TempsFile.cs`. The skin records the
+screen height it was built for in `[Metadata] ScreenHeight`.
 
 The skin reads `temps.txt` using WebParser measures and combines those values with Rainmeter native measures:
 
 - CPU usage;
 - RAM;
 - GPU usage via UsageMonitor;
-- network totals;
 - disk space and disk I/O.
+
+### Tray Icon
+
+`CodexBridge.exe --tray`, started at sign-in from the Startup folder (not elevated): show/hide the
+widget, settings, check for updates, install the update the watcher found, restart the widget.
 
 ### Display Watcher
 
@@ -161,7 +158,7 @@ Responsibilities:
 
 - poll primary monitor every 5 seconds;
 - detect the primary monitor's *true physical* resolution via `GetDeviceCaps(DESKTOPHORZRES/DESKTOPVERTRES)` rather than `[Screen]::PrimaryScreen.Bounds`. The watcher is a long-lived System-DPI-aware `powershell.exe`, so `Bounds` is virtualized against the DPI context captured at process start and reports stale dimensions after the display/scaling changes (e.g. a 4K@100% screen looks like 1920x1080 when the watcher started in an RDP/FullHD session). `GetDeviceCaps` is immune to this virtualization;
-- switch automatically between 1080p and 4K profiles when the primary monitor height crosses the configured threshold;
+- rebuild the skin (through the size switcher) when the primary monitor height differs from the one the skin was built for;
 - read current widget width from active skin;
 - move widget to top-right of primary monitor with 24 px margin;
 - write stable `WindowX`, `WindowY`, `AnchorX`, `AnchorY`, `AutoSelectScreen`, `SavePosition` values into Rainmeter.ini.
@@ -174,13 +171,9 @@ File:
 C:\CodexMonitor\Deploy\Switch-WidgetSize.ps1
 ```
 
-Modes:
-
-- `Auto`: primary monitor height >= 1600 uses 4K, otherwise 1080p, so 2560x1440 (2K) gets the compact profile and only true 4K-height screens get the large one (height is the true physical resolution from `GetDeviceCaps`, not the DPI-virtualized `Bounds`);
-- `1080p`: force compact profile;
-- `4K`: force larger profile.
-
-The switcher copies the chosen preset into the active Rainmeter skin path, then refreshes and moves Rainmeter. It does not rewrite the repository's root `CodexMonitor.ini`, so switching runtime size does not dirty the Git checkout.
+It asks the bridge to generate the skin for the current physical screen height
+(`CodexBridge.exe --build-skin`), then refreshes, moves and shows or hides the Rainmeter skin.
+The `-Mode` parameter is kept for older callers; the size comes from `config.json`.
 
 ### Installer
 
@@ -193,7 +186,7 @@ C:\CodexMonitor\Deploy\Install-CodexMonitor.ps1
 Responsibilities:
 
 - elevate if needed;
-- copy bridge, skin, presets, resources, watcher;
+- copy bridge, resources, watcher; generate the skin; create the watcher and tray Startup shortcuts;
 - create scheduled task `CodexMonitor Bridge Elevated`;
 - create watcher startup shortcut;
 - set Rainmeter desktop-mode options;
@@ -220,12 +213,11 @@ There are several copies by design:
 
 - active Rainmeter skin under the user's Rainmeter `SkinPath`;
 - working copy under `C:\CodexMonitor`;
-- presets under `C:\CodexMonitor\Presets`;
 - optional local reinstall payload under `<LocalStagingFolder>\Deploy\Payload`.
 
 When changing the widget:
 
-1. Edit the intended source/preset.
+1. Edit the intended source (for the skin: `SkinBuilder.cs`).
 2. Apply it to the active skin.
 3. Keep root and payload copies synchronized.
 4. Publish a new tagged release (`v*`) when bridge source or settings UI code changes; CI builds and attaches `CodexBridge.exe` to the release (the binary is not committed).

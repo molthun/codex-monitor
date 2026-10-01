@@ -60,25 +60,17 @@ When adding a new setting, update `config.example.json`, this guide, and the rel
 
 ## Editing Rainmeter
 
-Important files:
+The active skin is generated; edit the generator, not the ini:
 
 ```text
-<RainmeterSkinPath>\CodexMonitor\CodexMonitor.ini
-C:\CodexMonitor\CodexMonitor.ini
-C:\CodexMonitor\Presets\CodexMonitor.1080p.ini
-C:\CodexMonitor\Presets\CodexMonitor.4K.ini
+C:\CodexMonitor\CodexBridge\SkinBuilder.cs   layout, measures, colors
+C:\CodexMonitor\CodexBridge\TempsFile.cs     temps.txt key order (shared with the bridge)
 ```
 
-If editing visual layout, usually edit the appropriate preset first, then apply it. The size switcher updates the active Rainmeter skin only; it should not be used to update the tracked root `CodexMonitor.ini`.
+Rebuild the bridge, then regenerate and apply the skin:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "C:\CodexMonitor\Deploy\Switch-WidgetSize.ps1" -Mode 4K
-```
-
-or:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "C:\CodexMonitor\Deploy\Switch-WidgetSize.ps1" -Mode 1080p
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\CodexMonitor\Deploy\Switch-WidgetSize.ps1"
 ```
 
 Refresh:
