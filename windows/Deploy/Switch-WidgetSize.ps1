@@ -175,11 +175,13 @@ if (-not (Test-Path -LiteralPath $skinTargetDir)) {
 
 $bridgeExePath = Join-Path $InstallRoot "CodexBridge\CodexBridge.exe"
 $settingsConfigPath = if ($ConfigPath) { $ConfigPath } else { Join-Path $InstallRoot "config.json" }
-$built = & $bridgeExePath --build-skin --config $settingsConfigPath --out $skinTarget --screen-height $height
-if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $skinTarget)) {
-    throw "Building the skin failed: $built"
+# CodexBridge.exe is a GUI-subsystem program: wait for it explicitly.
+$build = Start-Process -FilePath $bridgeExePath -Wait -PassThru -WindowStyle Hidden -ArgumentList @(
+    "--build-skin", "--config", "`"$settingsConfigPath`"", "--out", "`"$skinTarget`"", "--screen-height", $height)
+if ($build.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $skinTarget)) {
+    throw "Building the skin failed (exit code $($build.ExitCode))."
 }
-$resolvedMode = "generated $built"
+$resolvedMode = "generated for a $height px high screen, $(Get-WidgetWidth -Path $skinTarget) px wide"
 
 $position = Set-PrimaryMonitorPosition -SkinIni $skinTarget
 
