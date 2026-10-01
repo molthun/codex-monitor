@@ -22,7 +22,7 @@ namespace CodexBridge
         private FlowLayoutPanel _pnlDrives = null!;
         private FlowLayoutPanel _pnlNetworkAdapters = null!;
         private TextBox _txtNetworkExclusions = null!;
-        private CheckBox _chkAutoUpdate = null!;
+        private ComboBox _cmbUpdateMode = null!;
         private ComboBox _cmbUpdateRate = null!;
         private Label _lblApplyStatus = null!;
         private Button _btnSave = null!;
@@ -176,15 +176,19 @@ namespace CodexBridge
             network.Controls.Add(_txtNetworkExclusions);
             body.Controls.Add(network);
 
-            var update = CreateCard(28, 594, 704, 84, "Updates and sensor refresh", "Background updates download the latest widget files from GitHub. Sensor refresh controls how often telemetry is written.");
-            _chkAutoUpdate = new CheckBox
+            var update = CreateCard(28, 594, 704, 84, "Updates and sensor refresh", "New releases from GitHub: a notification with an Update button, a silent install, or nothing. Sensor refresh controls how often telemetry is written.");
+            // Index order matches display.autoUpdate: "notify", true, false.
+            _cmbUpdateMode = new ComboBox
             {
-                Text = "Keep CodexMonitor updated automatically",
-                Location = new Point(18, 50),
+                Location = new Point(18, 49),
                 Size = new Size(290, 25),
-                Checked = true,
-                ForeColor = TextMain
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                BackColor = Color.FromArgb(38, 44, 50),
+                ForeColor = TextMain,
+                FlatStyle = FlatStyle.Flat
             };
+            _cmbUpdateMode.Items.AddRange(new object[] { "Notify with an Update button", "Install updates silently", "Don't check for updates" });
+            _cmbUpdateMode.SelectedIndex = 0;
             var rateLabel = new Label
             {
                 Text = "Sensor refresh:",
@@ -203,7 +207,7 @@ namespace CodexBridge
             };
             _cmbUpdateRate.Items.AddRange(new object[] { "1 second", "2 seconds", "3 seconds", "5 seconds", "10 seconds", "30 seconds" });
             _cmbUpdateRate.SelectedIndex = 0;
-            update.Controls.Add(_chkAutoUpdate);
+            update.Controls.Add(_cmbUpdateMode);
             update.Controls.Add(rateLabel);
             update.Controls.Add(_cmbUpdateRate);
             body.Controls.Add(update);
@@ -401,10 +405,14 @@ namespace CodexBridge
                 }
 
                 if (rootElement.TryGetProperty("display", out var display) && display.ValueKind == JsonValueKind.Object &&
-                    display.TryGetProperty("autoUpdate", out var autoUpdate) &&
-                    (autoUpdate.ValueKind == JsonValueKind.True || autoUpdate.ValueKind == JsonValueKind.False))
+                    display.TryGetProperty("autoUpdate", out var autoUpdate))
                 {
-                    _chkAutoUpdate.Checked = autoUpdate.GetBoolean();
+                    _cmbUpdateMode.SelectedIndex = autoUpdate.ValueKind switch
+                    {
+                        JsonValueKind.True => 1,
+                        JsonValueKind.False => 2,
+                        _ => 0,
+                    };
                 }
 
                 if (rootElement.TryGetProperty("rainmeter", out var rainmeter) && rainmeter.ValueKind == JsonValueKind.Object &&
@@ -491,7 +499,12 @@ namespace CodexBridge
                 configDict["network"] = networkDict;
 
                 var displayDict = ReadObject(configDict, "display");
-                displayDict["autoUpdate"] = _chkAutoUpdate.Checked;
+                displayDict["autoUpdate"] = _cmbUpdateMode.SelectedIndex switch
+                {
+                    1 => true,
+                    2 => false,
+                    _ => "notify",
+                };
                 configDict["display"] = displayDict;
 
                 var bridgeDict = ReadObject(configDict, "bridge");

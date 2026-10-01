@@ -6,6 +6,9 @@
 - Linux: "Top processes" shows which programs use the network now and whether they talk to the Internet or the LAN, from per-socket TCP counters (`ss`); UDP traffic is shown as `UDP / other`.
 - Linux: update notifications. The bridge checks the latest GitHub release every 6 hours; a newer one shows a GNOME notification with "Update now" (downloads the release and reruns `install.sh`, keeping the config) and "Release notes". `install.sh` records the installed version; `update.sh` can also be run by hand.
 - Linux: optional root helper `install-netsplit.sh` (nftables counters) for an exact Internet/LAN split; without it the split is estimated from TCP connections.
+- Windows: smart network panel like the Linux one. Download and Upload are each one bar split into Internet (blue) and LAN (mint), scaled to the link speed, with a tick at the Internet plan (`network.internetDownMbps` / `internetUpMbps` / `lanMbps`) that turns amber when the plan is maxed out; the graph is mirrored (download up, upload down) and stacked in the same colors. The Disk I/O divider no longer crosses the Upload row.
+- Windows: "Top processes" shows which applications use the network, with readable names and icons (file description like Task Manager, service names for `svchost`, `helper · host app` for runtimes, `Windows file sharing (SMB)` for kernel SMB traffic), from per-connection TCP counters (`GetPerTcpConnectionEStats`, needs the elevated bridge). `temps.txt` is now UTF-8.
+- Windows: update notifications with buttons. `display.autoUpdate: "notify"` (new default) shows a Windows notification with "Update now" (installs through the display watcher via the `codexmonitor:` URL protocol) and "Release notes", and the widget subtitle shows the available version; `true` keeps the silent install, `false` disables the check. The settings wizard offers the three modes.
 
 ## 2026-06-11
 

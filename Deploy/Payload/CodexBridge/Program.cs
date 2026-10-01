@@ -63,6 +63,10 @@ catch (Exception ex)
 var lastErrorLog = DateTime.MinValue;
 var networkPrevious = new Dictionary<string, (long Received, long Sent)>(StringComparer.OrdinalIgnoreCase);
 var networkPreviousAt = DateTime.UtcNow;
+// Per-app traffic; app icons go next to temps.txt so the skin can show them from @Resources.
+var appTraffic = new CodexBridge.AppTraffic(Path.Combine(Path.GetDirectoryName(outFile)!, "AppIcons"));
+var netPanel = new CodexBridge.NetPanel();
+var updateStatusFile = Path.Combine(root, "update-status.txt");
 
 do
 {
@@ -199,7 +203,22 @@ do
         var psuFan = psuFanSensor?.Value;
 
         // 6. Network Rates
-        var network = QueryNetworkRates(networkPrevious, ref networkPreviousAt, config);
+        var network = QueryNetworkRates(networkPrevious, ref networkPreviousAt, config, out var linkMbps);
+        var apps = new Dictionary<string, CodexBridge.AppRates>();
+        var appsOk = false;
+        try
+        {
+            apps = appTraffic.Sample();
+            appsOk = appTraffic.Available;
+        }
+        catch
+        {
+            // Per-app counters are optional; the panel falls back to totals.
+        }
+        var panel = netPanel.Build(
+            network.EthInMbps + network.WifiInMbps + network.WifiApInMbps,
+            network.EthOutMbps + network.WifiOutMbps + network.WifiApOutMbps,
+            linkMbps, apps, appsOk, config.NetPanel, ReadUpdateTag(updateStatusFile));
 
         var content = new StringBuilder()
             .Append($"CPU={Round(cpuTemp)}\n")
@@ -231,6 +250,7 @@ do
             .Append($"NetWifiActiveOutMbps={network.WifiActiveOutMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
             .Append($"NetWifiActiveDlMbps={network.WifiActiveDlMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
             .Append($"NetWifiActiveUlMbps={network.WifiActiveUlMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
+            .Append(string.Concat(CodexBridge.NetPanel.Keys.Select(key => $"{key}={panel[key]}\n")))
             .Append($"BridgeSource=LibreHardwareMonitor{(nvidiaGpu is null ? "" : "+NvidiaSmi")}\n")
             .ToString();
 
@@ -367,6 +387,18 @@ static void ApplyConfig(BridgeConfig config, string path)
         {
             config.NetworkEthernetNames = eth.EnumerateArray().Select(x => x.GetString()!).ToList();
         }
+        if (network.TryGetProperty("internetDownMbps", out var planDown) && planDown.TryGetDouble(out var planDownValue))
+        {
+            config.NetPanel.InternetDownMbps = planDownValue;
+        }
+        if (network.TryGetProperty("internetUpMbps", out var planUp) && planUp.TryGetDouble(out var planUpValue))
+        {
+            config.NetPanel.InternetUpMbps = planUpValue;
+        }
+        if (network.TryGetProperty("lanMbps", out var lanMbps) && lanMbps.TryGetDouble(out var lanMbpsValue))
+        {
+            config.NetPanel.LanMbps = lanMbpsValue;
+        }
     }
 }
 
@@ -428,6 +460,7 @@ static void TryWriteNvidiaFallback(string outFile)
             .Append($"NetWifiActiveOutMbps={Get(existing, "NetWifiActiveOutMbps")}\n")
             .Append($"NetWifiActiveDlMbps={Get(existing, "NetWifiActiveDlMbps")}\n")
             .Append($"NetWifiActiveUlMbps={Get(existing, "NetWifiActiveUlMbps")}\n")
+            .Append(string.Concat(CodexBridge.NetPanel.Keys.Select(key => $"{key}={Get(existing, key)}\n")))
             .Append($"BridgeSource={Get(existing, "BridgeSource")}\n")
             .ToString();
 
@@ -457,6 +490,19 @@ static Dictionary<string, string> ReadExisting(string outFile)
     }
 
     return values;
+}
+
+// Written by the display watcher when a newer release is out (empty otherwise).
+static string ReadUpdateTag(string path)
+{
+    try
+    {
+        return File.Exists(path) ? File.ReadLines(path).FirstOrDefault()?.Trim() ?? "" : "";
+    }
+    catch (IOException)
+    {
+        return "";
+    }
 }
 
 static string Get(Dictionary<string, string> values, string key)
@@ -538,8 +584,10 @@ static float? ParseFloat(string value)
 static (double EthInMbps, double EthOutMbps, double WifiInMbps, double WifiOutMbps, double WifiApInMbps, double WifiApOutMbps, string WifiActiveMode, double WifiActiveInMbps, double WifiActiveOutMbps, double WifiActiveDlMbps, double WifiActiveUlMbps) QueryNetworkRates(
     Dictionary<string, (long Received, long Sent)> previous,
     ref DateTime previousAt,
-    BridgeConfig config)
+    BridgeConfig config,
+    out double? linkMbps)
 {
+    linkMbps = null;
     var now = DateTime.UtcNow;
     var seconds = Math.Max((now - previousAt).TotalSeconds, 0.001);
     double ethIn = 0;
@@ -599,6 +647,11 @@ static (double EthInMbps, double EthOutMbps, double WifiInMbps, double WifiOutMb
                 txBytes = stats4.BytesSent;
             }
             catch { }
+        }
+
+        if (nic.Speed > 0)
+        {
+            linkMbps = Math.Max(linkMbps ?? 0, nic.Speed / 1_000_000.0);
         }
 
         seen.Add(nic.Id);
@@ -674,15 +727,19 @@ static void SafeWriteAllText(string path, string content)
         try
         {
             using (var fs = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
-            using (var writer = new StreamWriter(fs, Encoding.ASCII))
+            // UTF-8 without BOM: app names may be non-ASCII; the skin reads it with CodePage=65001.
+            using (var writer = new StreamWriter(fs, new UTF8Encoding(false)))
             {
                 writer.Write(content);
             }
             File.Move(tempPath, path, overwrite: true);
             return;
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // Windows throws UnauthorizedAccessException (not IOException) for some
+            // transient sharing/lock conditions: AV scanning the .tmp file, or a
+            // reader holding the target open during File.Move. Retry those too.
             if (i == maxRetries - 1)
             {
                 throw;
@@ -713,4 +770,5 @@ sealed class BridgeConfig
     public List<string>? NetworkWifiApNames { get; set; }
     public List<string>? NetworkWifiNames { get; set; }
     public List<string>? NetworkEthernetNames { get; set; }
+    public CodexBridge.NetPanelConfig NetPanel { get; } = new();
 }
