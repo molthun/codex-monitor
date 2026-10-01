@@ -39,6 +39,8 @@ let dismissedUpdateTag = null;
 const STALE_SECONDS = 5;
 const GRAPH_POINTS = 60;
 const MAX_TOP_ROWS = 5;
+// Below this a board fan counts as stopped (sensors report a few RPM of noise).
+const FAN_STOPPED_RPM = 200;
 const MAX_DISKS = 6;
 // Internet share of the plan at which the link counts as maxed out.
 const SATURATED = 0.9;
@@ -132,7 +134,7 @@ function fmtBytes(bytes) {
 }
 
 class MonitorWidget {
-    constructor(extensionPath, scale, widgetConfig, diskCount) {
+    constructor(extensionPath, scale, widgetConfig, diskCount, fanCount) {
         this._path = extensionPath;
         this._k = scale;
         this._cfg = widgetConfig;
@@ -173,9 +175,8 @@ class MonitorWidget {
 
         if (show.cooling) {
             this._section('fan.png', 'COOLING');
-            this._cpuFan = this._row('CPU cooler');
-            this._caseFan = this._row('Case fan');
-            this._psuFan = this._row('PSU fan');
+            // One row per fan chosen in the settings (any number), then the graphics card.
+            this._fans = Array.from({length: fanCount}, () => this._row(''));
             this._gpuFan = this._row('GPU fans');
         }
 
@@ -572,8 +573,11 @@ class MonitorWidget {
         this._setHealth('cpu', `CPU ${word[cpuState]} ${fmt(d.CPU, 0, '°C')}`, cpuState);
         this._setHealth('gpu', `GPU ${word[gpuState]} ${fmt(d.GPUCore, 0, '°C')}`, gpuState, COLOR.gpu);
         this._setHealth('ram', `RAM ${ramState === 'ok' ? 'OK' : ramState === 'warm' ? 'HIGH' : 'CRIT'} ${fmt(d.RAMPct, 0, '%')}`, ramState);
-        if (d.FansAvailable) {
-            const low = (d.CPUFan ?? 0) < 500 || (d.CaseFan ?? 300) < 300 || (d.PSUFan ?? 300) < 300 ||
+        const fans = d.Fans ?? [];
+        // A stopped GPU fan is normal while the card is cool ("0 RPM" mode).
+        const gpuFanIdle = (d.GPUFanPct ?? null) === 0 && (d.GPUCore ?? 0) < 60;
+        if (d.FansAvailable || fans.length) {
+            const low = fans.some(fan => fan.warn && (fan.rpm ?? 0) < FAN_STOPPED_RPM) ||
                 ((d.GPUCore ?? 0) >= 60 && (d.GPUFanPct ?? 0) <= 0);
             this._setHealth('fans', low ? 'FANS LOW' : 'FANS OK', low ? 'hot' : 'ok');
         } else {
@@ -594,12 +598,20 @@ class MonitorWidget {
         this._setRow(this._gpuTemp, fmt(d.GPUCore, 0, '°C'), (d.GPUCore ?? 0) / 100, GRADIENT.cpu, gpuState);
 
         // Cooling
-        const rpm = v => (v === null || v === undefined ? 'n/a' : `${Math.round(v)} RPM`);
         const maxRpm = cfg.fanMaxRpm;
-        this._setRow(this._cpuFan, rpm(d.CPUFan), (d.CPUFan ?? 0) / maxRpm, GRADIENT.cpu);
-        this._setRow(this._caseFan, rpm(d.CaseFan), (d.CaseFan ?? 0) / maxRpm, GRADIENT.cpu);
-        this._setRow(this._psuFan, rpm(d.PSUFan), (d.PSUFan ?? 0) / maxRpm, GRADIENT.cpu);
-        this._setRow(this._gpuFan, fmt(d.GPUFanPct, 0, '%'), (d.GPUFanPct ?? 0) / 100, GRADIENT.gpu);
+        (this._fans ?? []).forEach((row, i) => {
+            const fan = fans[i];
+            row.label.text = fan?.name ?? '';
+            if (fan?.rpm === null || fan?.rpm === undefined) {
+                this._setRow(row, 'n/a', 0, GRADIENT.cpu);
+                return;
+            }
+            const stopped = fan.rpm < FAN_STOPPED_RPM;
+            this._setRow(row, stopped ? 'stopped' : `${Math.round(fan.rpm)} RPM`, fan.rpm / maxRpm, GRADIENT.cpu,
+                stopped && fan.warn ? 'hot' : 'ok');
+        });
+        this._setRow(this._gpuFan, gpuFanIdle ? 'idle (0 RPM mode)' : fmt(d.GPUFanPct, 0, '%'),
+            (d.GPUFanPct ?? 0) / 100, GRADIENT.gpu);
 
         if (this._graph)
             this._updateNetwork(d, cfg);
@@ -815,7 +827,8 @@ class Controller {
 
     _createWidget(scale) {
         this._widget?.destroy();
-        this._widget = new MonitorWidget(this.path, scale, this._widgetConfig, this._diskCount);
+        this._fanCount = this._lastData?.Fans?.length ?? 0;
+        this._widget = new MonitorWidget(this.path, scale, this._widgetConfig, this._diskCount, this._fanCount);
         Main.layoutManager._backgroundGroup.add_child(this._widget.actor);
         this._widget.update(this._lastData);
     }
@@ -833,6 +846,9 @@ class Controller {
         if (!this._enabled)
             return;
         this._lastData = data;
+        // The fan list comes from the bridge; rebuild when its length changes.
+        if (data && (data.Fans?.length ?? 0) !== this._fanCount)
+            this._rebuild();
         this._widget?.update(data);
         this._updateIndicator(data);
         this._announceUpdate();

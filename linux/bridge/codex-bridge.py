@@ -33,7 +33,8 @@ MAX_DISKS = 6
 
 DEFAULT_CONFIG = {
     "bridge": {"updateSeconds": 1, "outputFile": ""},
-    # chip "auto" = the board chip with the most fans; channels "" = not connected.
+    # list: [{"id": "nct6798/fan2", "name": "Front intake", "warn": true}], set in the settings window.
+    # Without a list: chip ("auto" = the board chip with the most fans) and cpu/case/psu channels.
     "fans": {"chip": "auto", "cpu": "fan1", "case": "fan2", "psu": ""},
     # device "auto" = NVIDIA, else the AMD card with the most VRAM, else Intel; or an id from inventory.json.
     "gpu": {"device": "auto"},
@@ -116,24 +117,46 @@ GPU_HWMON = {"amdgpu", "radeon", "nouveau", "i915", "xe"}
 
 
 def fan_chips():
-    """[(chip name, {"fan1": rpm, ...})] for every board chip that reports fans."""
-    chips = []
+    """[(chip id, {"fan1": rpm, ...})] for every board chip that reports fans.
+
+    The chip id is its hwmon name, numbered when two chips share a name ("nct6798#2").
+    """
+    chips, seen = [], {}
     for name, path in hwmon_chips():
         if name in GPU_HWMON:
             continue
         fans = {f"fan{i}": read_int(f"{path}/fan{i}_input") for i in range(1, 10)}
         fans = {k: v for k, v in fans.items() if v is not None}
         if fans:
-            chips.append((name, fans))
+            seen[name] = seen.get(name, 0) + 1
+            chips.append((name if seen[name] == 1 else f"{name}#{seen[name]}", fans))
     return chips
 
 
-def board_fans(chip):
-    """Fans of the configured chip (name prefix), or of the chip with the most fans for "auto"."""
+def fan_readings():
+    """{"nct6798/fan1": rpm, ...} for every board fan channel."""
+    return {f"{chip}/{channel}": rpm for chip, fans in fan_chips() for channel, rpm in fans.items()}
+
+
+def fan_list(cfg):
+    """Fans to show: [{"id", "name", "warn"}], in order.
+
+    The settings window writes an explicit list (any number of fans, any chips). Older
+    configs name a chip and the cpu/case/psu channels instead; those still work.
+    """
+    if isinstance(cfg.get("list"), list):
+        return [{"id": f["id"], "name": f.get("name") or f["id"], "warn": bool(f.get("warn", True))}
+                for f in cfg["list"] if isinstance(f, dict) and f.get("id")]
     chips = fan_chips()
-    if chip and chip != "auto":
+    chip = cfg.get("chip") or "auto"
+    if chip != "auto":
         chips = [c for c in chips if c[0].startswith(chip)]
-    return max(chips, key=lambda c: len(c[1]))[1] if chips else {}
+    if not chips:
+        return []
+    name, fans = max(chips, key=lambda c: len(c[1]))
+    roles = (("cpu", "CPU cooler", True), ("case", "Case fan", False), ("psu", "PSU fan", False))
+    return [{"id": f"{name}/{cfg[key]}", "name": title, "warn": warn}
+            for key, title, warn in roles if cfg.get(key) and cfg[key] in fans]
 
 
 def dump_sensors():
@@ -912,11 +935,13 @@ def mount_inventory():
     return sorted(by_device.values(), key=lambda m: m["mount"])
 
 
-def inventory(gpus, net_data):
+def inventory(gpus, net_data, fan_cfg):
     """What this PC has, for the settings window: GPUs, fan chips with live RPM, drives, link speed."""
     return {
         "gpus": [{"id": g["id"], "name": g["name"], "driver": g["driver"]} for g in gpus],
         "fanChips": [{"name": name, "fans": fans} for name, fans in fan_chips()],
+        # The fans shown now, so the settings window can start from them.
+        "fanList": fan_list(fan_cfg),
         "mounts": mount_inventory(),
         "linkMbps": net_data.get("NetLinkMbps"),
         "Timestamp": time.time(),
@@ -970,18 +995,16 @@ def main():
         # Settings changed (settings window or by hand): restart cleanly with the new config.
         if not once and config_stamp() != started_with:
             os.execv(sys.executable, [sys.executable, *sys.argv])
-        fans = board_fans(fan_cfg.get("chip") or "auto")
+        readings = fan_readings()
+        fans = [{**fan, "rpm": readings.get(fan["id"])} for fan in fan_list(fan_cfg)]
         net_data = net.sample()
         data = {
             "CPU": cpu_temp(),
             "CPULoad": cpu.value(),
             **memory(),
             **gpu.snapshot(),
-            "CPUFan": fans.get(fan_cfg.get("cpu")),
-            **{f"BoardFan{i}": fans.get(f"fan{i}") for i in range(1, 8)},
-            "CaseFan": fans.get(fan_cfg.get("case")),
-            "PSUFan": fans.get(fan_cfg.get("psu")),
-            "FansAvailable": bool(fans),
+            "Fans": fans,
+            "FansAvailable": bool(readings),
             **net_data,
             **traffic_split(net_data, split.sample(), *processes.sample(), top_n, processes.icons),
             "Disks": disks.sample(),
@@ -990,8 +1013,9 @@ def main():
             "Timestamp": time.time(),
         }
         write_atomic(out, data)
-        if time.monotonic() - inventory_at > 5:
-            write_atomic(inventory_path, inventory(gpus, net_data))
+        # Often enough for the settings window to show live fan speeds.
+        if time.monotonic() - inventory_at > 2:
+            write_atomic(inventory_path, inventory(gpus, net_data, fan_cfg))
             inventory_at = time.monotonic()
         if once:
             print(json.dumps(data, indent=2))

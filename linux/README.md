@@ -81,9 +81,9 @@ The settings window (also under Extensions → CodexMonitor) has:
 
 - **Widget**: size (automatic by screen, 1080p / 2K / 4K, or a custom percentage),
   fit to screen height, position, which sections to show, the top bar icon;
-- **Hardware**: which graphics card to show (NVIDIA, AMD, Intel, none), the fan sensor
-  chip and which channel is the CPU / case / PSU fan (with live RPM), up to 6 drives and
-  their names;
+- **Hardware**: which graphics card to show (NVIDIA, AMD, Intel, none), the fans to show
+  (any number, from any chip, named and ordered as you like, with live RPM to tell them
+  apart and a per-fan "warn when it stops"), up to 6 drives and their names;
 - **Network**: Internet plan speeds, LAN full scale, number of top-process rows;
 - **Updates**: notify / install automatically / off, and **Check now** with **Install**.
 
@@ -99,8 +99,12 @@ Changes apply immediately: the widget and the bridge both watch the config file.
 | Intel / other integrated | – | – | – | – |
 
 CPU temperature comes from `coretemp` (Intel) or `k10temp` (AMD). Board fans come from
-the SuperIO chip (`nct67xx`, `it87xx`, …); "Automatic" picks the chip with the most fans.
-Some boards need the kernel module first (`sudo modprobe nct6775` or `it87`).
+the SuperIO chips (`nct67xx`, `it87xx`, …); some boards need the kernel module first
+(`sudo modprobe nct6775` or `it87`). Which channel is which fan: in Settings → Hardware →
+Fans the speeds update live — load the CPU and watch its cooler speed up; on most boards
+`fan1…fan7` follow the header order in the BIOS. Channels at 0 RPM are usually empty headers.
+A graphics card at 0 RPM while cool is in its normal "0 RPM" mode and shown as idle; it only
+counts as a problem when the card is hot (60 °C and up).
 
 ## Configuration
 
@@ -109,8 +113,8 @@ edited through the settings window.
 
 | Key | Meaning |
 | --- | --- |
-| `fans.chip` | `auto` or a hwmon chip name prefix (`nct`, `it87`, …) |
-| `fans.cpu` / `case` / `psu` | hwmon channel for each row (`fan1`…`fan9`, `""` = not connected) |
+| `fans.list` | fans to show, in order: `[{"id": "nct6798/fan2", "name": "Front intake", "warn": true}]` (set in the settings window) |
+| `fans.chip`, `fans.cpu` / `case` / `psu` | used while there is no `fans.list`: chip (`auto` or a name prefix) and its CPU / case / PSU channels |
 | `gpu.device` | `auto`, `none` or an id from `inventory.json` (`nvidia:0`, `drm:card1`) |
 | `disks` | up to six mount points for Disk I/O and Drives used |
 | `network.*` | interface classification (Ethernet / Wi-Fi / ignored) |

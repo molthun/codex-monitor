@@ -129,6 +129,114 @@ function comboRow(config, path, title, subtitle, choices, fallback) {
     return row;
 }
 
+function iconButton(icon, tooltip, sensitive, onClick) {
+    const button = new Gtk.Button({icon_name: icon, tooltip_text: tooltip, valign: Gtk.Align.CENTER, sensitive,
+        css_classes: ['flat']});
+    button.connect('clicked', onClick);
+    return button;
+}
+
+// ------------------------------------------------------------------ fans
+
+function fanReadings(inventory) {
+    return Object.fromEntries((inventory?.fanChips ?? []).flatMap(chip =>
+        Object.entries(chip.fans).map(([channel, rpm]) => [`${chip.name}/${channel}`, rpm])));
+}
+
+function splitFanId(id) {
+    const slash = id.lastIndexOf('/');
+    return [id.slice(0, slash), id.slice(slash + 1)];
+}
+
+/**
+ * The fans shown in the widget: any number, from any chip, with names. Speeds update live
+ * so fans can be told apart (load the CPU and watch which one speeds up).
+ */
+function fansGroup(config, inventory, onInventory) {
+    const group = new Adw.PreferencesGroup({
+        title: 'Fans',
+        description: inventory.fanChips.length
+            ? 'Shown in the widget in this order. To tell fans apart, watch the live speeds: load the CPU ' +
+              'and its cooler speeds up. On most boards fan1…fan7 follow the header order in the BIOS ' +
+              '(CPU_FAN, CHA_FAN1, …). Channels at 0 RPM are usually empty headers.'
+            : 'No board fan sensors found. Many boards need a kernel module first, e.g. ' +
+              '"sudo modprobe nct6775" or "sudo modprobe it87".',
+    });
+    // Until the list is edited, start from what the widget shows now (older config keys).
+    const list = (config.get('fans.list', null) ?? inventory.fanList ?? [])
+        .map(fan => ({id: fan.id, name: fan.name || fan.id, warn: fan.warn ?? true}));
+    let readings = fanReadings(inventory);
+    const rows = [];
+    let live = [];
+    const save = () => config.set('fans.list', list.map(fan => ({...fan})));
+    const speed = id => (readings[id] === undefined ? 'not found' : `${readings[id]} RPM`);
+    const describe = id => `${splitFanId(id).join(' · ')} · ${speed(id)}`;
+
+    const render = () => {
+        rows.forEach(row => group.remove(row));
+        rows.length = 0;
+        live = [];
+        list.forEach((fan, index) => {
+            const row = new Adw.ExpanderRow({title: fan.name, subtitle: describe(fan.id)});
+            const name = new Adw.EntryRow({title: 'Name in the widget', text: fan.name});
+            name.connect('changed', () => {
+                fan.name = name.text || fan.id;
+                row.title = fan.name;
+                save();
+            });
+            const warn = new Adw.SwitchRow({title: 'Warn when it stops',
+                subtitle: 'Turn off for fans that stop on purpose at low load', active: fan.warn});
+            warn.connect('notify::active', () => {
+                fan.warn = warn.active;
+                save();
+            });
+            const move = (to) => () => {
+                [list[index], list[to]] = [list[to], list[index]];
+                save();
+                render();
+            };
+            const actions = new Adw.ActionRow({title: 'Order'});
+            actions.add_suffix(iconButton('go-up-symbolic', 'Move up', index > 0, move(index - 1)));
+            actions.add_suffix(iconButton('go-down-symbolic', 'Move down', index < list.length - 1, move(index + 1)));
+            actions.add_suffix(iconButton('user-trash-symbolic', 'Remove from the widget', true, () => {
+                list.splice(index, 1);
+                save();
+                render();
+            }));
+            row.add_row(name);
+            row.add_row(warn);
+            row.add_row(actions);
+            group.add(row);
+            rows.push(row);
+            live.push(() => (row.subtitle = describe(fan.id)));
+        });
+
+        const unused = Object.keys(readings).filter(id => !list.some(fan => fan.id === id));
+        if (!unused.length)
+            return;
+        const add = new Adw.ExpanderRow({title: 'Add a fan', subtitle: `${unused.length} more channels on this board`});
+        for (const id of unused) {
+            const [chip, channel] = splitFanId(id);
+            const row = new Adw.ActionRow({title: `${chip} · ${channel}`, subtitle: speed(id)});
+            row.add_suffix(iconButton('list-add-symbolic', 'Add to the widget', true, () => {
+                list.push({id, name: `Fan ${channel.replace(/^fan/, '')}`, warn: true});
+                save();
+                render();
+            }));
+            add.add_row(row);
+            live.push(() => (row.subtitle = speed(id)));
+        }
+        group.add(add);
+        rows.push(add);
+    };
+    onInventory(next => {
+        readings = fanReadings(next);
+        live.forEach(update => update());
+    });
+    render();
+    return group;
+}
+
 // ------------------------------------------------------------------ pages
 
 function widgetPage(config) {
@@ -188,7 +296,7 @@ function widgetPage(config) {
     return page;
 }
 
-function hardwarePage(config, inventory) {
+function hardwarePage(config, inventory, onInventory) {
     const page = new Adw.PreferencesPage({name: 'hardware', title: 'Hardware', icon_name: 'computer-symbolic'});
     if (!inventory) {
         const group = new Adw.PreferencesGroup({
@@ -207,23 +315,7 @@ function hardwarePage(config, inventory) {
         'auto'));
     page.add(gpu);
 
-    const fans = new Adw.PreferencesGroup({
-        title: 'Fans',
-        description: inventory.fanChips.length
-            ? 'Current speeds are shown next to each channel to help match them.'
-            : 'No board fan sensors found. Many boards need a kernel module, e.g. "sudo modprobe nct6775" or "it87".',
-    });
-    const chips = inventory.fanChips;
-    fans.add(comboRow(config, 'fans.chip', 'Sensor chip', 'The board chip that reports the fans',
-        [['auto', 'Automatic'], ...chips.map(c => [c.name, `${c.name} (${Object.keys(c.fans).length} fans)`])], 'auto'));
-    const chipName = config.get('fans.chip', 'auto');
-    const chip = chips.find(c => c.name.startsWith(chipName)) ??
-        [...chips].sort((a, b) => Object.keys(b.fans).length - Object.keys(a.fans).length)[0];
-    const channels = [['', 'Not connected'], ...Object.entries(chip?.fans ?? {}).map(([id, rpm]) => [id, `${id} (${rpm} RPM)`])];
-    fans.add(comboRow(config, 'fans.cpu', 'CPU cooler', '', channels, 'fan1'));
-    fans.add(comboRow(config, 'fans.case', 'Case fan', '', channels, 'fan2'));
-    fans.add(comboRow(config, 'fans.psu', 'PSU fan', '', channels, ''));
-    page.add(fans);
+    page.add(fansGroup(config, inventory, onInventory));
 
     const drives = new Adw.PreferencesGroup({
         title: 'Drives',
@@ -362,14 +454,25 @@ export function fillPreferencesWindow(window, _prefs) {
     const runtime = config.get('bridge.outputFile', '')
         ? GLib.path_get_dirname(config.get('bridge.outputFile').replace(/^~/, GLib.get_home_dir()))
         : GLib.build_filenamev([GLib.get_user_runtime_dir(), 'codex-monitor']);
-    const inventory = readJson(GLib.build_filenamev([runtime, 'inventory.json']));
+    const inventoryPath = GLib.build_filenamev([runtime, 'inventory.json']);
+    const inventory = readJson(inventoryPath);
+    // The bridge rewrites inventory.json every 2 s; pass it on for live fan speeds.
+    const listeners = [];
+    const onInventory = listener => listeners.push(listener);
+    const timer = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 2, () => {
+        const next = readJson(inventoryPath);
+        if (next)
+            listeners.forEach(listener => listener(next));
+        return GLib.SOURCE_CONTINUE;
+    });
 
     window.set_default_size(680, 760);
     window.add(widgetPage(config));
-    window.add(hardwarePage(config, inventory));
+    window.add(hardwarePage(config, inventory, onInventory));
     window.add(networkPage(config, inventory));
     window.add(updatesPage(config));
     window.connect('close-request', () => {
+        GLib.source_remove(timer);
         config.flush();
         return false;
     });
