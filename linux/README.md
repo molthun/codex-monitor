@@ -83,8 +83,8 @@ The widget reloads it automatically; restart the bridge after bridge changes:
 | `widget.diskLabels` | display names for mount points |
 | `update.check`, `update.intervalHours` | new-release check (notification with an Update button) |
 | `network.topProcesses` | how many processes the network panel lists |
-| `widget.internetDownMbps` / `internetUpMbps` | your Internet plan: tick on the bars, graph scale step, amber when ≥ 90% used |
-| `widget.lanMbps` | full scale of the Download/Upload bars; `0` = NIC link speed |
+| `widget.internetDownMbps` / `internetUpMbps` | your Internet plan (asked by the installer; `0` = unknown, no tick): tick on the bars, graph scale step, amber when ≥ 90% used |
+| `widget.lanMbps` | full scale of the Download/Upload bars; `0` = link speed of the network card (Ethernet, or the Wi-Fi bitrate) |
 | `widget.diskIOMaxMBs`, `fanMaxRpm` | full-scale values for bars |
 
 Size profiles: 1080p ≈ 430 px wide, 2K ≈ 540 px, 4K ≈ 720 px. In Auto mode the

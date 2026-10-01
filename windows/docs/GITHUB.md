@@ -48,7 +48,7 @@ Then initialize:
 ```powershell
 cd C:\CodexMonitor
 git init
-git add README.md CHANGELOG.md docs .gitignore CodexBridge Deploy Presets Watch-PrimaryDisplay.ps1 CodexMonitor.ini
+git add windows README.md CHANGELOG.md
 git commit -m "Initial CodexMonitor project handoff"
 ```
 

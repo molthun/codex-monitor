@@ -208,6 +208,7 @@ class Network:
         self.prev = None
         self.prev_at = None
         self.modes = {}
+        self.bitrates = {}
         self.modes_at = 0
 
     def _kind(self, iface):
@@ -224,6 +225,7 @@ class Network:
         # Refresh "managed"/"AP" every 5 s; iw is cheap but not free.
         if time.monotonic() - self.modes_at > 5:
             self.modes = {}
+            self.bitrates = {}
             self.modes_at = time.monotonic()
         if iface not in self.modes:
             mode = "managed"
@@ -233,6 +235,18 @@ class Network:
                     mode = "AP"
             self.modes[iface] = mode
         return self.modes[iface]
+
+    def _wifi_bitrate(self, iface):
+        """Wi-Fi link rate in Mbps ("tx bitrate: 866.7 MBit/s"); sysfs has no speed for Wi-Fi."""
+        self._wifi_mode(iface)  # shares the 5 s refresh
+        if iface not in self.bitrates:
+            rate = None
+            if shutil.which("iw"):
+                out = subprocess.run(["iw", "dev", iface, "link"], capture_output=True, text=True).stdout
+                match = re.search(r"tx bitrate:\s*([\d.]+)\s*MBit/s", out)
+                rate = float(match.group(1)) if match else None
+            self.bitrates[iface] = rate
+        return self.bitrates[iface]
 
     def sample(self):
         now = time.monotonic()
@@ -270,8 +284,9 @@ class Network:
             mode, a_in, a_out, dl, ul = "WiFi", wifi[0], wifi[1], wifi[0], wifi[1]
         else:
             mode, a_in, a_out, dl, ul = "Off", 0.0, 0.0, 0.0, 0.0
-        speeds = [read_int(f"/sys/class/net/{i}/speed") for i, (k, _, _) in counters.items() if k == "eth"]
-        speeds = [v for v in speeds if v and v > 0]
+        speeds = [read_int(f"/sys/class/net/{i}/speed") if k == "eth" else self._wifi_bitrate(i)
+                  for i, (k, _, _) in counters.items()]
+        speeds = [round(v) for v in speeds if v and v > 0]
         return {
             "NetLinkMbps": max(speeds) if speeds else None,
             "NetEthInMbps": eth[0], "NetEthOutMbps": eth[1],

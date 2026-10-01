@@ -11,6 +11,9 @@
 - Windows: "Top processes" shows which applications use the network, with readable names and icons (file description like Task Manager, service names for `svchost`, `helper · host app` for runtimes, `Windows file sharing (SMB)` for kernel SMB traffic), from per-connection TCP counters (`GetPerTcpConnectionEStats`, needs the elevated bridge). `temps.txt` is now UTF-8.
 - Windows: update notifications with buttons. `display.autoUpdate: "notify"` (new default) shows a Windows notification with "Update now" (installs through the display watcher via the `codexmonitor:` URL protocol) and "Release notes", and the widget subtitle shows the available version; `true` keeps the silent install, `false` disables the check. The settings wizard offers the three modes.
 
+- Repository layout: the Windows version moved to `windows/` (next to `linux/`); the root holds `install.ps1` (Windows) and `install.sh` (Linux), both usable from a clone or straight from GitHub. The Windows one-liner is now `irm .../main/install.ps1 | iex`. The display watcher installs releases from either layout, so existing installs update across the move.
+- Per-user speeds instead of the author's: the example configs no longer contain a 500 Mbps plan. LAN full scale comes from the network card (Linux now also reads the Wi-Fi bitrate); the Internet plan is asked by the Linux installer and set in the Windows settings wizard (new fields), and stays unset (no plan mark) if skipped.
+- Fixed the Windows bootstrap copy step (`Copy-Item -LiteralPath "...\*"` does not expand the wildcard).
 ## 2026-06-11
 
 - Routed 2560x1440 (2K) screens to the compact (1080p) profile by raising the default `autoProfileHeightThreshold` from 1440 to 1600. The 4K preset (720 px wide) was oversized on a 2K monitor (~28% of the screen); the compact preset reads closer to how it looks on native FullHD. Only true 4K-height screens (>= 1600) now get the large profile.

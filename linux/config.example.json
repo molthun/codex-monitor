@@ -29,8 +29,8 @@
     "autoProfileThresholds": { "2K": 1400, "4K": 2000 },
     "marginRight": 24,
     "marginTop": 24,
-    "internetDownMbps": 500,
-    "internetUpMbps": 500,
+    "internetDownMbps": 0,
+    "internetUpMbps": 0,
     "lanMbps": 0,
     "diskIOMaxMBs": 1000,
     "diskLabels": {
