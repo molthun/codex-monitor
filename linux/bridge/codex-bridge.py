@@ -44,7 +44,9 @@ DEFAULT_CONFIG = {
         "wifiPrefixes": ["wl"],
         "ethernetPrefixes": ["en", "eth"],
         "splitFile": "/run/codex-monitor/netsplit.json",
-        # How many applications the bridge reports; the widget shows up to widget.topProcesses of them.
+        # Extra temperatures (liquid, board, drives): [{"id": "nzxtkraken3/temp1", "name": "Liquid", "warm": 40, "hot": 50}].
+    "temps": {"list": []},
+    # How many applications the bridge reports; the widget shows up to widget.topProcesses of them.
         "topProcesses": 5,
     },
     # mode: "notify" (notification with an Update button), "auto" (install right away) or "off".
@@ -116,26 +118,106 @@ def cpu_temp():
 GPU_HWMON = {"amdgpu", "radeon", "nouveau", "i915", "xe"}
 
 
-def fan_chips():
-    """[(chip id, {"fan1": rpm, ...})] for every board chip that reports fans.
+class Liquidctl:
+    """AIO water coolers without a kernel driver (many Corsair, Lian Li, newer NZXT), through
+    liquidctl when it is installed. Each device becomes a chip with its pump/fan speeds and
+    liquid temperature. Some devices need "liquidctl initialize all" once after boot."""
 
-    The chip id is its hwmon name, numbered when two chips share a name ("nct6798#2").
+    def __init__(self):
+        self.chips = []
+        if shutil.which("liquidctl"):
+            threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        while True:
+            try:
+                out = subprocess.run(["liquidctl", "status", "--json"], capture_output=True, text=True,
+                                     timeout=15).stdout
+                self.chips = self.parse(json.loads(out or "[]"))
+            except (OSError, ValueError, subprocess.TimeoutExpired):
+                self.chips = []
+            time.sleep(3)
+
+    @staticmethod
+    def parse(devices):
+        chips = []
+        for device in devices:
+            fans, temps, labels = {}, {}, {}
+            for item in device.get("status", []):
+                unit, key, value = str(item.get("unit", "")).lower(), item.get("key", ""), item.get("value")
+                if not isinstance(value, (int, float)):
+                    continue
+                if unit == "rpm":
+                    channel = f"fan{len(fans) + 1}"
+                    fans[channel] = round(value)
+                elif unit in ("°c", "c"):
+                    channel = f"temp{len(temps) + 1}"
+                    temps[channel] = float(value)
+                else:
+                    continue
+                labels[channel] = key
+            if fans or temps:
+                name = re.sub(r"[^a-z0-9]+", "-", device.get("description", "device").lower()).strip("-")
+                chips.append({"name": f"liquidctl-{name}", "fans": fans, "temps": temps, "labels": labels})
+        return chips
+
+
+LIQUIDCTL = None
+
+
+def sensor_chips():
+    """Every sensor chip except graphics cards (the GPU reader covers those):
+    [{"name", "fans": {"fan1": rpm}, "temps": {"temp1": °C}, "labels": {"fan1": "Pump speed"}}].
+
+    Names are hwmon names, numbered when two chips share one ("nct6798#2"); liquidctl
+    devices are added as "liquidctl-<model>".
     """
     chips, seen = [], {}
     for name, path in hwmon_chips():
         if name in GPU_HWMON:
             continue
         fans = {f"fan{i}": read_int(f"{path}/fan{i}_input") for i in range(1, 10)}
+        temps = {f"temp{i}": read_int(f"{path}/temp{i}_input") for i in range(1, 33)}
         fans = {k: v for k, v in fans.items() if v is not None}
-        if fans:
-            seen[name] = seen.get(name, 0) + 1
-            chips.append((name if seen[name] == 1 else f"{name}#{seen[name]}", fans))
-    return chips
+        temps = {k: v / 1000 for k, v in temps.items() if v is not None}
+        if not fans and not temps:
+            continue
+        labels = {k: read(f"{path}/{k}_label") for k in [*fans, *temps]}
+        seen[name] = seen.get(name, 0) + 1
+        chips.append({"name": name if seen[name] == 1 else f"{name}#{seen[name]}", "fans": fans, "temps": temps,
+                      "labels": {k: v for k, v in labels.items() if v}})
+    return chips + (LIQUIDCTL.chips if LIQUIDCTL else [])
+
+
+def fan_chips():
+    """[(chip id, {"fan1": rpm, ...})] for every chip that reports fans."""
+    return [(c["name"], c["fans"]) for c in sensor_chips() if c["fans"]]
 
 
 def fan_readings():
-    """{"nct6798/fan1": rpm, ...} for every board fan channel."""
+    """{"nct6798/fan1": rpm, ...} for every fan channel."""
     return {f"{chip}/{channel}": rpm for chip, fans in fan_chips() for channel, rpm in fans.items()}
+
+
+def temp_readings():
+    """{"nct6798/temp2": °C, ...} for every temperature sensor (liquid, board, drives, …)."""
+    return {f"{c['name']}/{channel}": value for c in sensor_chips() for channel, value in c["temps"].items()}
+
+
+def temp_limits(label):
+    """Default warm/hot thresholds: liquid runs much cooler than chips."""
+    return (40, 50) if re.search(r"coolant|liquid|water", label or "", re.I) else (70, 85)
+
+
+def temp_list(cfg):
+    """Extra temperatures to show after CPU and GPU: [{"id", "name", "warm", "hot"}]."""
+    result = []
+    for t in cfg.get("list") or []:
+        if isinstance(t, dict) and t.get("id"):
+            warm, hot = temp_limits(t.get("name"))
+            result.append({"id": t["id"], "name": t.get("name") or t["id"],
+                           "warm": t.get("warm", warm), "hot": t.get("hot", hot)})
+    return result
 
 
 def fan_list(cfg):
@@ -936,10 +1018,14 @@ def mount_inventory():
 
 
 def inventory(gpus, net_data, fan_cfg):
-    """What this PC has, for the settings window: GPUs, fan chips with live RPM, drives, link speed."""
+    """What this PC has, for the settings window: GPUs, sensor chips with live values, drives, link speed."""
+    chips = sensor_chips()
     return {
         "gpus": [{"id": g["id"], "name": g["name"], "driver": g["driver"]} for g in gpus],
-        "fanChips": [{"name": name, "fans": fans} for name, fans in fan_chips()],
+        "fanChips": [{"name": c["name"], "fans": c["fans"], "labels": {k: v for k, v in c["labels"].items() if k in c["fans"]}}
+                     for c in chips if c["fans"]],
+        "tempChips": [{"name": c["name"], "temps": c["temps"], "labels": {k: v for k, v in c["labels"].items() if k in c["temps"]}}
+                      for c in chips if c["temps"]],
         # The fans shown now, so the settings window can start from them.
         "fanList": fan_list(fan_cfg),
         "mounts": mount_inventory(),
@@ -991,11 +1077,15 @@ def main():
     time.sleep(1 if once else interval)
 
     fan_cfg = cfg["fans"]
+    temp_cfg = cfg.get("temps", {})
+    global LIQUIDCTL
+    LIQUIDCTL = Liquidctl()
     while True:
         # Settings changed (settings window or by hand): restart cleanly with the new config.
         if not once and config_stamp() != started_with:
             os.execv(sys.executable, [sys.executable, *sys.argv])
         readings = fan_readings()
+        temps = temp_readings() if temp_cfg.get("list") else {}
         fans = [{**fan, "rpm": readings.get(fan["id"])} for fan in fan_list(fan_cfg)]
         net_data = net.sample()
         data = {
@@ -1004,6 +1094,7 @@ def main():
             **memory(),
             **gpu.snapshot(),
             "Fans": fans,
+            "Temps": [{**t, "value": temps.get(t["id"])} for t in temp_list(temp_cfg)],
             "FansAvailable": bool(readings),
             **net_data,
             **traffic_split(net_data, split.sample(), *processes.sample(), top_n, processes.icons),

@@ -8,6 +8,7 @@
 - Linux: AMD graphics (load, temperature, VRAM, fan via `amdgpu`) and Intel discrete graphics (temperature); "auto" picks NVIDIA, then the AMD card with the most VRAM, then Intel. Board fans: the "auto" chip is the one with the most fans (ITE `it87` boards work without configuration). Up to 6 drives. The bridge writes `inventory.json` (GPUs, fan chips, drives, link speed) for the settings window.
 - Linux: the example config no longer contains the author's drives and fan channels.
 - Linux: any number of fans from any sensor chip, each with its own name, order and "warn when it stops" switch, edited in Settings → Hardware → Fans with live RPM (add, rename, reorder, remove). A graphics card in its 0 RPM mode shows "idle" and only raises FANS LOW when the card is hot. Older configs (`fans.chip` with cpu/case/psu channels) keep working.
+- Linux: water cooling. Extra temperatures (liquid, board, drives) can be added to the widget with their own amber/red thresholds (liquid defaults to 40/50 °C). AIO coolers with a kernel driver (NZXT Kraken, Corsair Commander, Aquacomputer) show their pump, fans and coolant temperature with driver labels; others work through liquidctl when it is installed. Fan bars scale per fan, so pumps do not peg the bar.
 
 ## 2026-10-01
 

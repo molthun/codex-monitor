@@ -134,7 +134,7 @@ function fmtBytes(bytes) {
 }
 
 class MonitorWidget {
-    constructor(extensionPath, scale, widgetConfig, diskCount, fanCount) {
+    constructor(extensionPath, scale, widgetConfig, diskCount, fanCount, tempCount) {
         this._path = extensionPath;
         this._k = scale;
         this._cfg = widgetConfig;
@@ -171,6 +171,8 @@ class MonitorWidget {
             this._section('temp.png', 'TEMPERATURES');
             this._cpuTemp = this._row('CPU temp');
             this._gpuTemp = this._row('GPU temp');
+            // Extra sensors chosen in the settings: liquid, board, drives, …
+            this._temps = Array.from({length: tempCount}, () => this._row(''));
         }
 
         if (show.cooling) {
@@ -597,6 +599,13 @@ class MonitorWidget {
         this._setRow(this._cpuTemp, fmt(d.CPU, 0, '°C'), (d.CPU ?? 0) / 100, GRADIENT.cpu, cpuState);
         this._setRow(this._gpuTemp, fmt(d.GPUCore, 0, '°C'), (d.GPUCore ?? 0) / 100, GRADIENT.cpu, gpuState);
 
+        (this._temps ?? []).forEach((row, i) => {
+            const t = d.Temps?.[i];
+            row.label.text = t?.name ?? '';
+            this._setRow(row, fmt(t?.value, 0, '°C'), (t?.value ?? 0) / 100, GRADIENT.cpu,
+                t?.value === null || t?.value === undefined ? 'ok' : level(t.value, t.warm, t.hot));
+        });
+
         // Cooling
         const maxRpm = cfg.fanMaxRpm;
         (this._fans ?? []).forEach((row, i) => {
@@ -607,7 +616,11 @@ class MonitorWidget {
                 return;
             }
             const stopped = fan.rpm < FAN_STOPPED_RPM;
-            this._setRow(row, stopped ? 'stopped' : `${Math.round(fan.rpm)} RPM`, fan.rpm / maxRpm, GRADIENT.cpu,
+            // Pumps spin far faster than fans: scale each bar to the fastest speed seen for it.
+            this._fanPeaks ??= new Map();
+            const peak = Math.max(maxRpm, fan.rpm, this._fanPeaks.get(fan.id) ?? 0);
+            this._fanPeaks.set(fan.id, peak);
+            this._setRow(row, stopped ? 'stopped' : `${Math.round(fan.rpm)} RPM`, fan.rpm / peak, GRADIENT.cpu,
                 stopped && fan.warn ? 'hot' : 'ok');
         });
         this._setRow(this._gpuFan, gpuFanIdle ? 'idle (0 RPM mode)' : fmt(d.GPUFanPct, 0, '%'),
@@ -828,7 +841,9 @@ class Controller {
     _createWidget(scale) {
         this._widget?.destroy();
         this._fanCount = this._lastData?.Fans?.length ?? 0;
-        this._widget = new MonitorWidget(this.path, scale, this._widgetConfig, this._diskCount, this._fanCount);
+        this._tempCount = this._lastData?.Temps?.length ?? 0;
+        this._widget = new MonitorWidget(this.path, scale, this._widgetConfig, this._diskCount, this._fanCount,
+            this._tempCount);
         Main.layoutManager._backgroundGroup.add_child(this._widget.actor);
         this._widget.update(this._lastData);
     }
@@ -846,8 +861,8 @@ class Controller {
         if (!this._enabled)
             return;
         this._lastData = data;
-        // The fan list comes from the bridge; rebuild when its length changes.
-        if (data && (data.Fans?.length ?? 0) !== this._fanCount)
+        // Fan and temperature lists come from the bridge; rebuild when their length changes.
+        if (data && ((data.Fans?.length ?? 0) !== this._fanCount || (data.Temps?.length ?? 0) !== this._tempCount))
             this._rebuild();
         this._widget?.update(data);
         this._updateIndicator(data);

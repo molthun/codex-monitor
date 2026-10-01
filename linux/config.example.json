@@ -9,6 +9,9 @@
     "case": "fan2",
     "psu": ""
   },
+  "temps": {
+    "list": []
+  },
   "gpu": {
     "device": "auto"
   },

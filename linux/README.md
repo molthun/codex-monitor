@@ -82,8 +82,9 @@ The settings window (also under Extensions → CodexMonitor) has:
 - **Widget**: size (automatic by screen, 1080p / 2K / 4K, or a custom percentage),
   fit to screen height, position, which sections to show, the top bar icon;
 - **Hardware**: which graphics card to show (NVIDIA, AMD, Intel, none), the fans to show
-  (any number, from any chip, named and ordered as you like, with live RPM to tell them
-  apart and a per-fan "warn when it stops"), up to 6 drives and their names;
+  (any number, from any chip — board, AIO pump and radiator fans — named and ordered as you
+  like, with live RPM to tell them apart and a per-fan "warn when it stops"), extra
+  temperatures (liquid, board, drives) with their own thresholds, up to 6 drives and their names;
 - **Network**: Internet plan speeds, LAN full scale, number of top-process rows;
 - **Updates**: notify / install automatically / off, and **Check now** with **Install**.
 
@@ -106,6 +107,20 @@ Fans the speeds update live — load the CPU and watch its cooler speed up; on m
 A graphics card at 0 RPM while cool is in its normal "0 RPM" mode and shown as idle; it only
 counts as a problem when the card is hot (60 °C and up).
 
+**Water cooling (AIO).** A pump on the board's AIO_PUMP / W_PUMP header is an ordinary fan
+channel: add it under Fans and name it "Pump" (keep "warn when it stops" on). Coolers with a
+USB link report pump speed, fans and **liquid temperature**:
+
+- with a kernel driver (NZXT Kraken, Corsair Commander Pro, Aquacomputer, …) they appear in
+  Fans and More temperatures directly, labelled by the driver ("Pump speed", "Coolant temp");
+- others (many Corsair iCUE, Lian Li, newer NZXT) through [liquidctl](https://github.com/liquidctl/liquidctl):
+  install it (`sudo apt install liquidctl`) and they appear as `liquidctl-<model>`; some need
+  `liquidctl initialize all` once after boot.
+
+Liquid temperatures default to amber at 40 °C and red at 50 °C (chips: 70 / 85 °C); every
+extra temperature has its own thresholds. Fan bars are scaled per fan, so a pump at 2800 RPM
+does not peg its bar.
+
 ## Configuration
 
 `~/.config/codex-monitor/config.json` (created from `config.example.json`), normally
@@ -114,6 +129,7 @@ edited through the settings window.
 | Key | Meaning |
 | --- | --- |
 | `fans.list` | fans to show, in order: `[{"id": "nct6798/fan2", "name": "Front intake", "warn": true}]` (set in the settings window) |
+| `temps.list` | extra temperatures after CPU and GPU: `[{"id": "kraken3/temp1", "name": "Liquid", "warm": 40, "hot": 50}]` |
 | `fans.chip`, `fans.cpu` / `case` / `psu` | used while there is no `fans.list`: chip (`auto` or a name prefix) and its CPU / case / PSU channels |
 | `gpu.device` | `auto`, `none` or an id from `inventory.json` (`nvidia:0`, `drm:card1`) |
 | `disks` | up to six mount points for Disk I/O and Drives used |

@@ -136,61 +136,108 @@ function iconButton(icon, tooltip, sensitive, onClick) {
     return button;
 }
 
-// ------------------------------------------------------------------ fans
+// ------------------------------------------------------------------ fans and temperatures
 
-function fanReadings(inventory) {
-    return Object.fromEntries((inventory?.fanChips ?? []).flatMap(chip =>
-        Object.entries(chip.fans).map(([channel, rpm]) => [`${chip.name}/${channel}`, rpm])));
-}
-
-function splitFanId(id) {
+function splitSensorId(id) {
     const slash = id.lastIndexOf('/');
     return [id.slice(0, slash), id.slice(slash + 1)];
 }
 
+// "Pump speed" -> "Pump", "Liquid temperature" -> "Liquid": driver labels as default names.
+function nameFromLabel(label) {
+    return label?.replace(/\s*(speed|temp(erature)?)$/i, '').trim() || null;
+}
+
+// Mirrors temp_limits() in the bridge: liquid runs much cooler than chips.
+function tempLimits(label) {
+    return /coolant|liquid|water/i.test(label ?? '') ? [40, 50] : [70, 85];
+}
+
+const SENSOR_KINDS = {
+    fans: {
+        path: 'fans.list',
+        chips: 'fanChips',
+        channels: 'fans',
+        format: rpm => `${rpm} RPM`,
+        initial: inventory => inventory.fanList ?? [],
+        normalize: fan => ({id: fan.id, name: fan.name || fan.id, warn: fan.warn ?? true}),
+        create: (id, channel, label) => ({id, name: nameFromLabel(label) ?? `Fan ${channel.replace(/^fan/, '')}`,
+            warn: true}),
+        options(entry, save) {
+            const warn = new Adw.SwitchRow({title: 'Warn when it stops',
+                subtitle: 'Keep on for pumps and the CPU cooler; turn off for fans that stop on purpose',
+                active: entry.warn});
+            warn.connect('notify::active', () => {
+                entry.warn = warn.active;
+                save();
+            });
+            return [warn];
+        },
+    },
+    temps: {
+        path: 'temps.list',
+        chips: 'tempChips',
+        channels: 'temps',
+        format: value => `${value.toFixed(value < 100 ? 1 : 0)} °C`,
+        initial: () => [],
+        normalize: t => {
+            const [warm, hot] = tempLimits(t.name);
+            return {id: t.id, name: t.name || t.id, warm: t.warm ?? warm, hot: t.hot ?? hot};
+        },
+        create: (id, channel, label) => {
+            const [warm, hot] = tempLimits(label);
+            return {id, name: nameFromLabel(label) ?? channel, warm, hot};
+        },
+        options(entry, save) {
+            return [['warm', 'Amber from', entry.warm], ['hot', 'Red from', entry.hot]].map(([key, title, value]) => {
+                const row = Adw.SpinRow.new_with_range(0, 150, 1);
+                row.set({title, subtitle: '°C', value});
+                row.connect('notify::value', () => {
+                    entry[key] = Math.round(row.value);
+                    save();
+                });
+                return row;
+            });
+        },
+    },
+};
+
 /**
- * The fans shown in the widget: any number, from any chip, with names. Speeds update live
- * so fans can be told apart (load the CPU and watch which one speeds up).
+ * An editable list of sensors for the widget (fans or extra temperatures): any number, from
+ * any chip — board, AIO water cooler, liquidctl device — named and ordered by the user.
+ * Values update live, so a fan or a sensor can be identified by watching it change.
  */
-function fansGroup(config, inventory, onInventory) {
-    const group = new Adw.PreferencesGroup({
-        title: 'Fans',
-        description: inventory.fanChips.length
-            ? 'Shown in the widget in this order. To tell fans apart, watch the live speeds: load the CPU ' +
-              'and its cooler speeds up. On most boards fan1…fan7 follow the header order in the BIOS ' +
-              '(CPU_FAN, CHA_FAN1, …). Channels at 0 RPM are usually empty headers.'
-            : 'No board fan sensors found. Many boards need a kernel module first, e.g. ' +
-              '"sudo modprobe nct6775" or "sudo modprobe it87".',
-    });
-    // Until the list is edited, start from what the widget shows now (older config keys).
-    const list = (config.get('fans.list', null) ?? inventory.fanList ?? [])
-        .map(fan => ({id: fan.id, name: fan.name || fan.id, warn: fan.warn ?? true}));
-    let readings = fanReadings(inventory);
+function sensorListGroup(kind, config, inventory, onInventory, title, description) {
+    const spec = SENSOR_KINDS[kind];
+    const group = new Adw.PreferencesGroup({title, description});
+    // Until the list is edited, start from what the widget shows now.
+    const list = (config.get(spec.path, null) ?? spec.initial(inventory)).map(spec.normalize);
+    const readingsOf = inv => Object.fromEntries((inv?.[spec.chips] ?? []).flatMap(chip =>
+        Object.entries(chip[spec.channels]).map(([channel, value]) =>
+            [`${chip.name}/${channel}`, {value, label: chip.labels?.[channel]}])));
+    let readings = readingsOf(inventory);
     const rows = [];
     let live = [];
-    const save = () => config.set('fans.list', list.map(fan => ({...fan})));
-    const speed = id => (readings[id] === undefined ? 'not found' : `${readings[id]} RPM`);
-    const describe = id => `${splitFanId(id).join(' · ')} · ${speed(id)}`;
+    const save = () => config.set(spec.path, list.map(entry => ({...entry})));
+    const value = id => (readings[id] === undefined ? 'not found' : spec.format(readings[id].value));
+    const describe = id => {
+        const label = readings[id]?.label;
+        return `${splitSensorId(id).join(' · ')}${label ? ` (${label})` : ''} · ${value(id)}`;
+    };
 
     const render = () => {
         rows.forEach(row => group.remove(row));
         rows.length = 0;
         live = [];
-        list.forEach((fan, index) => {
-            const row = new Adw.ExpanderRow({title: fan.name, subtitle: describe(fan.id)});
-            const name = new Adw.EntryRow({title: 'Name in the widget', text: fan.name});
+        list.forEach((entry, index) => {
+            const row = new Adw.ExpanderRow({title: entry.name, subtitle: describe(entry.id)});
+            const name = new Adw.EntryRow({title: 'Name in the widget', text: entry.name});
             name.connect('changed', () => {
-                fan.name = name.text || fan.id;
-                row.title = fan.name;
+                entry.name = name.text || entry.id;
+                row.title = entry.name;
                 save();
             });
-            const warn = new Adw.SwitchRow({title: 'Warn when it stops',
-                subtitle: 'Turn off for fans that stop on purpose at low load', active: fan.warn});
-            warn.connect('notify::active', () => {
-                fan.warn = warn.active;
-                save();
-            });
-            const move = (to) => () => {
+            const move = to => () => {
                 [list[index], list[to]] = [list[to], list[index]];
                 save();
                 render();
@@ -203,38 +250,56 @@ function fansGroup(config, inventory, onInventory) {
                 save();
                 render();
             }));
-            row.add_row(name);
-            row.add_row(warn);
-            row.add_row(actions);
+            for (const option of [name, ...spec.options(entry, save), actions])
+                row.add_row(option);
             group.add(row);
             rows.push(row);
-            live.push(() => (row.subtitle = describe(fan.id)));
+            live.push(() => (row.subtitle = describe(entry.id)));
         });
 
-        const unused = Object.keys(readings).filter(id => !list.some(fan => fan.id === id));
+        const unused = Object.keys(readings).filter(id => !list.some(entry => entry.id === id));
         if (!unused.length)
             return;
-        const add = new Adw.ExpanderRow({title: 'Add a fan', subtitle: `${unused.length} more channels on this board`});
+        const add = new Adw.ExpanderRow({title: kind === 'fans' ? 'Add a fan' : 'Add a temperature',
+            subtitle: `${unused.length} more on this PC`});
         for (const id of unused) {
-            const [chip, channel] = splitFanId(id);
-            const row = new Adw.ActionRow({title: `${chip} · ${channel}`, subtitle: speed(id)});
+            const [chip, channel] = splitSensorId(id);
+            const label = readings[id].label;
+            const row = new Adw.ActionRow({title: `${chip} · ${channel}${label ? ` (${label})` : ''}`, subtitle: value(id)});
             row.add_suffix(iconButton('list-add-symbolic', 'Add to the widget', true, () => {
-                list.push({id, name: `Fan ${channel.replace(/^fan/, '')}`, warn: true});
+                list.push(spec.create(id, channel, label));
                 save();
                 render();
             }));
             add.add_row(row);
-            live.push(() => (row.subtitle = speed(id)));
+            live.push(() => (row.subtitle = value(id)));
         }
         group.add(add);
         rows.push(add);
     };
     onInventory(next => {
-        readings = fanReadings(next);
+        readings = readingsOf(next);
         live.forEach(update => update());
     });
     render();
     return group;
+}
+
+function fansGroup(config, inventory, onInventory) {
+    return sensorListGroup('fans', config, inventory, onInventory, 'Fans', inventory.fanChips.length
+        ? 'Shown in the widget in this order: board fans, AIO pumps and radiator fans alike. To tell them ' +
+          'apart, watch the live speeds — load the CPU and its cooler speeds up. On most boards fan1…fan7 ' +
+          'follow the header order in the BIOS (CPU_FAN, CHA_FAN1, AIO_PUMP, …). Channels at 0 RPM are ' +
+          'usually empty headers.'
+        : 'No fan sensors found. Many boards need a kernel module first, e.g. "sudo modprobe nct6775" or ' +
+          '"sudo modprobe it87".');
+}
+
+function tempsGroup(config, inventory, onInventory) {
+    return sensorListGroup('temps', config, inventory, onInventory, 'More temperatures',
+        'Shown after CPU and GPU: liquid temperature of a water cooler, board, drives. AIO coolers with a ' +
+        'kernel driver (NZXT Kraken, Corsair Commander, Aquacomputer) show up here directly; others need ' +
+        'liquidctl installed. Unconnected board sensors often show nonsense values.');
 }
 
 // ------------------------------------------------------------------ pages
@@ -316,6 +381,7 @@ function hardwarePage(config, inventory, onInventory) {
     page.add(gpu);
 
     page.add(fansGroup(config, inventory, onInventory));
+    page.add(tempsGroup(config, inventory, onInventory));
 
     const drives = new Adw.PreferencesGroup({
         title: 'Drives',
