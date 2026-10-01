@@ -153,7 +153,6 @@ function Get-PrimaryMonitorPosition {
 $packageRoot = $PSScriptRoot
 $payload = Join-Path $packageRoot "Payload"
 $bridgeSource = Join-Path $payload "CodexBridge"
-$skinSource = Join-Path $payload "RainmeterSkin\CodexMonitor"
 $layoutSource = Join-Path $payload "RainmeterLayout-CodexMonitor.ini"
 
 if (-not (Test-Path -LiteralPath $payload)) {
@@ -171,7 +170,6 @@ if (-not $RainmeterSkinPath) {
 $skinTarget = Join-Path $RainmeterSkinPath "CodexMonitor"
 $resourcesTarget = Join-Path $InstallRoot "@Resources"
 $bridgeTarget = Join-Path $InstallRoot "CodexBridge"
-$presetsTarget = Join-Path $InstallRoot "Presets"
 $bridgeProject = Join-Path $bridgeTarget "CodexBridge.csproj"
 $bridgeExe = Join-Path $bridgeTarget "CodexBridge.exe"
 $watcherScript = Join-Path $InstallRoot "Watch-PrimaryDisplay.ps1"
@@ -217,13 +215,10 @@ if (-not (Test-Path -LiteralPath $payloadBridgeExe)) {
 }
 
 $skinResourcesTarget = Join-Path $skinTarget "@Resources"
-New-Item -ItemType Directory -Force -Path $InstallRoot, $resourcesTarget, $skinTarget, $presetsTarget, $skinResourcesTarget | Out-Null
+New-Item -ItemType Directory -Force -Path $InstallRoot, $resourcesTarget, $skinTarget, $skinResourcesTarget | Out-Null
 New-Item -ItemType Directory -Force -Path $bridgeTarget | Out-Null
 Copy-Item -Path (Join-Path $bridgeSource "*") -Destination $bridgeTarget -Recurse -Force
-Copy-Item -LiteralPath (Join-Path $payload "CodexMonitor.ini") -Destination (Join-Path $InstallRoot "CodexMonitor.ini") -Force
-Copy-Item -LiteralPath (Join-Path $skinSource "CodexMonitor.ini") -Destination (Join-Path $skinTarget "CodexMonitor.ini") -Force
-Copy-Item -LiteralPath (Join-Path $skinSource "CodexMonitor.1080p.ini") -Destination (Join-Path $presetsTarget "CodexMonitor.1080p.ini") -Force
-Copy-Item -LiteralPath (Join-Path $skinSource "CodexMonitor.4K.ini") -Destination (Join-Path $presetsTarget "CodexMonitor.4K.ini") -Force
+# The skin itself (CodexMonitor.ini) is generated from config.json by Switch-WidgetSize.ps1 below.
 $watcherSource = [System.IO.Path]::GetFullPath((Join-Path (Get-ProjectRoot) "Watch-PrimaryDisplay.ps1"))
 $watcherDest = [System.IO.Path]::GetFullPath($watcherScript)
 if ($watcherSource -ine $watcherDest) {
@@ -344,6 +339,13 @@ if (-not $SkipRainmeterLayout -and (Test-Path -LiteralPath $rainmeterIni)) {
 
 if (-not $NoStart) {
     Start-ScheduledTask -TaskName $taskName
+    # Rebuild the skin once the bridge has listed the fans (inventory.json), so the default fan
+    # rows match what it writes to temps.txt.
+    $inventory = Join-Path $skinResourcesTarget "inventory.json"
+    for ($i = 0; $i -lt 20 -and -not (Test-Path -LiteralPath $inventory); $i++) { Start-Sleep -Milliseconds 500 }
+    if (Test-Path -LiteralPath $sizeSwitcher) {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sizeSwitcher -InstallRoot $InstallRoot -ConfigPath $configTarget | Out-Null
+    }
     Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watcherScript`" -ConfigPath `"$configTarget`"" -WindowStyle Hidden
     if (Test-Path -LiteralPath $rainmeterExe) {
         if (-not (Get-Process Rainmeter -ErrorAction SilentlyContinue)) {

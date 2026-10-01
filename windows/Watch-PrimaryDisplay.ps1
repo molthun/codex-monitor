@@ -319,12 +319,11 @@ function Install-Release {
         Copy-Item -LiteralPath "$payloadIcons\*" -Destination $targetIcons -Force
     }
 
-    $mode = Get-AutoProfileMode -ScreenHeight ((Get-PhysicalPrimaryBounds).Height)
-    $preset = Get-PresetPath -Mode $mode
-    if (-not $preset) {
-        throw "Could not find a Rainmeter preset for mode $mode."
+    # Regenerate the skin with the new bridge (its layout may have changed).
+    $switcher = Join-Path $InstallRoot "Deploy\Switch-WidgetSize.ps1"
+    Invoke-CheckedCommand -Description "Rebuild the skin" -Command {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $switcher -InstallRoot $InstallRoot -ConfigPath $(if ($ConfigPath) { $ConfigPath } else { Join-Path $InstallRoot "config.json" })
     }
-    Copy-Item -LiteralPath $preset -Destination (Join-Path $skinTarget "CodexMonitor.ini") -Force
 
     # Restart the elevated bridge task (task name from config).
     Invoke-CheckedCommand -Description "Restart CodexBridge scheduled task" -Command { schtasks.exe /run /tn $taskName }
@@ -464,35 +463,17 @@ function Get-AutoProfileMode {
     return $compactProfile
 }
 
-function Get-PresetPath {
-    param([string]$Mode)
-
-    $presetName = if ($Mode -eq "4K") { "CodexMonitor.4K.ini" } else { "CodexMonitor.1080p.ini" }
-    $candidates = @(
-        (Join-Path $InstallRoot "Presets\$presetName"),
-        (Join-Path $InstallRoot "Deploy\Payload\RainmeterSkin\CodexMonitor\$presetName")
-    )
-
-    return $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-}
-
 function Switch-ProfileIfNeeded {
     param($ScreenBounds)
 
     if ($config.profiles.auto -eq $false) { return $false }
 
-    $mode = Get-AutoProfileMode -ScreenHeight $ScreenBounds.Height
-    $preset = Get-PresetPath -Mode $mode
-    if (-not $preset) { return $false }
-
+    # The skin is generated for a screen height (stamped in its [Metadata]); rebuild it when that changes.
     $skinPath = Get-RainmeterSkinPath
     $skinIni = Join-Path $skinPath "CodexMonitor\CodexMonitor.ini"
-    $currentWidth = Get-IniNumber -Path $skinIni -Key "W" -Default 0
-    $currentHeight = Get-IniNumber -Path $skinIni -Key "H" -Default 0
-    $targetWidth = Get-IniNumber -Path $preset -Key "W" -Default $currentWidth
-    $targetHeight = Get-IniNumber -Path $preset -Key "H" -Default $currentHeight
-
-    if ($currentWidth -eq $targetWidth -and $currentHeight -eq $targetHeight) { return $false }
+    $builtFor = Get-IniNumber -Path $skinIni -Key "ScreenHeight" -Default 0
+    if ($builtFor -eq $ScreenBounds.Height) { return $false }
+    $mode = Get-AutoProfileMode -ScreenHeight $ScreenBounds.Height
 
     $switcher = Join-Path $InstallRoot "Deploy\Switch-WidgetSize.ps1"
     if (-not (Test-Path -LiteralPath $switcher)) { return $false }

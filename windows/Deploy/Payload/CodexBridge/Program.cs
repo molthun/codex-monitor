@@ -26,6 +26,24 @@ if (settingsMode)
     return;
 }
 
+// Generates the Rainmeter skin from the settings (Switch-WidgetSize.ps1 calls this):
+//   --build-skin --out <CodexMonitor.ini> --screen-height <px> [--config <config.json>]
+if (args.Any(a => string.Equals(a, "--build-skin", StringComparison.OrdinalIgnoreCase)))
+{
+    var skinConfig = CodexBridge.AppConfig.Load(configPath);
+    var target = GetArgValue(args, "--out") ?? throw new ArgumentException("--build-skin needs --out <path to CodexMonitor.ini>");
+    var screenHeight = int.TryParse(GetArgValue(args, "--screen-height"), out var h) ? h : 1080;
+    var temps = ReadConfig(configPath).BridgeOutputFile ?? Path.Combine(Path.GetDirectoryName(target)!, @"@Resources\temps.txt");
+    var fans = CodexBridge.SkinBuilder.FanList(skinConfig, Path.Combine(Path.GetDirectoryName(temps)!, "inventory.json"));
+    var (skin, width, height, scale) = CodexBridge.SkinBuilder.Build(skinConfig, fans, screenHeight,
+        Environment.ProcessPath ?? "CodexBridge.exe");
+    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(target))!);
+    // UTF-8 with BOM, like the presets it replaces: Rainmeter needs the BOM for non-ASCII names.
+    File.WriteAllText(target, skin, new UTF8Encoding(true));
+    Console.WriteLine($"{{\"width\": {width}, \"height\": {height}, \"scale\": {scale.ToString("0.###", CultureInfo.InvariantCulture)}, \"fans\": {fans.Count}}}");
+    return;
+}
+
 var config = ReadConfig(configPath);
 var root = config.InstallRoot ?? @"C:\CodexMonitor";
 var outFile = config.BridgeOutputFile ?? Path.Combine(root, @"@Resources\temps.txt");
@@ -59,6 +77,15 @@ catch (Exception ex)
 {
     File.AppendAllText(Path.Combine(root, "CodexBridge.error.log"), $"{DateTime.Now:u} Failed to open LibreHardwareMonitor: {ex}\n");
 }
+
+var appConfig = CodexBridge.AppConfig.Load(configPath);
+// Fans and extra temperatures chosen in the settings; without a fan list, defaults are picked once
+// from the first sensor read (CPU fan + every other fan spinning then) and kept for this run.
+var fanList = appConfig.Fans;
+var tempList = appConfig.Temps;
+var inventoryFile = Path.Combine(Path.GetDirectoryName(outFile)!, "inventory.json");
+var inventoryAt = DateTime.MinValue;
+List<string>? fileKeys = null;
 
 var lastErrorLog = DateTime.MinValue;
 var networkPrevious = new Dictionary<string, (long Received, long Sent)>(StringComparer.OrdinalIgnoreCase);
@@ -97,15 +124,19 @@ do
             ?? sensors.FirstOrDefault(s => s.HardwareType == HardwareType.Cpu && s.Type == SensorType.Temperature);
         var cpuTemp = cpuTempSensor?.Value;
 
+        fanList ??= CodexBridge.HardwareSensors.DefaultFans(sensors);
+        fileKeys ??= CodexBridge.TempsFile.Keys(fanList.Count, tempList.Count);
+
         // 2. CPU Fan RPM (Usually under motherboard/SuperIO HardwareType as Fan)
         var cpuFanSensor = sensors.FirstOrDefault(s => (s.HardwareType == HardwareType.Motherboard || s.HardwareType == HardwareType.SuperIO) && s.Type == SensorType.Fan && s.Name.Contains("CPU", StringComparison.OrdinalIgnoreCase))
             ?? sensors.FirstOrDefault(s => s.Type == SensorType.Fan && s.Name.Contains("CPU", StringComparison.OrdinalIgnoreCase))
             ?? sensors.FirstOrDefault(s => (s.HardwareType == HardwareType.Motherboard || s.HardwareType == HardwareType.SuperIO) && s.Type == SensorType.Fan);
         var cpuFan = cpuFanSensor?.Value;
 
-        // 3. GPU Sensors
-        var isGpu = new Func<SimpleSensor, bool>(s => s.HardwareType == HardwareType.GpuNvidia || s.HardwareType == HardwareType.GpuAmd || s.HardwareType == HardwareType.GpuIntel);
-        
+        // 3. GPU Sensors: the card chosen in the settings ("auto": NVIDIA, else the AMD card with the most memory, else Intel)
+        var gpu = CodexBridge.HardwareSensors.PickGpu(sensors, appConfig.GpuDevice);
+        var isGpu = new Func<SimpleSensor, bool>(s => gpu is not null && s.HardwareIdentifier == gpu.Id);
+
         var gpuCoreSensor = sensors.FirstOrDefault(s => isGpu(s) && s.Type == SensorType.Temperature && s.Name.Contains("GPU Core", StringComparison.OrdinalIgnoreCase))
             ?? sensors.FirstOrDefault(s => isGpu(s) && s.Type == SensorType.Temperature && s.Name.Contains("Core", StringComparison.OrdinalIgnoreCase))
             ?? sensors.FirstOrDefault(s => isGpu(s) && s.Type == SensorType.Temperature);
@@ -124,14 +155,16 @@ do
             ?? sensors.FirstOrDefault(s => isGpu(s) && s.Type == SensorType.Load && s.Name.Contains("Fan", StringComparison.OrdinalIgnoreCase));
         var gpuFanPct = gpuFanPctSensor?.Value;
 
-        var nvidiaGpu = QueryNvidiaSmi();
+        var nvidiaGpu = gpu?.Type == HardwareType.GpuNvidia ? QueryNvidiaSmi() : null;
         if (nvidiaGpu is not null)
         {
             gpuCore = nvidiaGpu.Value.Temp ?? gpuCore;
             gpuFanPct = nvidiaGpu.Value.FanPct ?? gpuFanPct;
         }
-        var vramUsedMb = nvidiaGpu?.VramUsedMb;
-        var vramTotalMb = nvidiaGpu?.VramTotalMb;
+        // VRAM: nvidia-smi for NVIDIA, LibreHardwareMonitor's memory sensors for AMD and Intel.
+        var lhmVram = CodexBridge.HardwareSensors.Vram(sensors.Where(isGpu));
+        var vramUsedMb = nvidiaGpu?.VramUsedMb ?? lhmVram.Used;
+        var vramTotalMb = nvidiaGpu?.VramTotalMb ?? lhmVram.Total;
         var vramPct = vramUsedMb.HasValue && vramTotalMb.HasValue && vramTotalMb.Value > 0
             ? vramUsedMb.Value / vramTotalMb.Value * 100
             : (float?)null;
@@ -220,39 +253,49 @@ do
             network.EthOutMbps + network.WifiOutMbps + network.WifiApOutMbps,
             linkMbps, apps, appsOk, config.NetPanel, ReadUpdateTag(updateStatusFile));
 
-        var content = new StringBuilder()
-            .Append($"CPU={Round(cpuTemp)}\n")
-            .Append($"GPUCore={Round(gpuCore)}\n")
-            .Append($"GPUHotspot={Round(gpuHotspot)}\n")
-            .Append($"GPUMemory={Round(gpuMemory)}\n")
-            .Append($"VRAMUsedMB={Round(vramUsedMb)}\n")
-            .Append($"VRAMTotalMB={Round(vramTotalMb)}\n")
-            .Append($"VRAMPct={Round(vramPct)}\n")
-            .Append($"GPUFan={Round(gpuFan)}\n")
-            .Append($"GPUFanPct={Round(gpuFanPct)}\n")
-            .Append($"CPUFan={Round(cpuFan)}\n")
-            .Append($"BoardFan1={Round(boardFansArray[0])}\n")
-            .Append($"BoardFan2={Round(boardFansArray[1])}\n")
-            .Append($"BoardFan3={Round(boardFansArray[2])}\n")
-            .Append($"BoardFan4={Round(boardFansArray[3])}\n")
-            .Append($"BoardFan5={Round(boardFansArray[4])}\n")
-            .Append($"BoardFan6={Round(boardFansArray[5])}\n")
-            .Append($"BoardFan7={Round(boardFansArray[6])}\n")
-            .Append($"PSUFan={Round(psuFan)}\n")
-            .Append($"NetEthInMbps={network.EthInMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
-            .Append($"NetEthOutMbps={network.EthOutMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
-            .Append($"NetWifiInMbps={network.WifiInMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
-            .Append($"NetWifiOutMbps={network.WifiOutMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
-            .Append($"NetWifiApInMbps={network.WifiApInMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
-            .Append($"NetWifiApOutMbps={network.WifiApOutMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
-            .Append($"NetWifiActiveMode={network.WifiActiveMode}\n")
-            .Append($"NetWifiActiveInMbps={network.WifiActiveInMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
-            .Append($"NetWifiActiveOutMbps={network.WifiActiveOutMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
-            .Append($"NetWifiActiveDlMbps={network.WifiActiveDlMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
-            .Append($"NetWifiActiveUlMbps={network.WifiActiveUlMbps.ToString("0.0", CultureInfo.InvariantCulture)}\n")
-            .Append(string.Concat(CodexBridge.NetPanel.Keys.Select(key => $"{key}={panel[key]}\n")))
-            .Append($"BridgeSource=LibreHardwareMonitor{(nvidiaGpu is null ? "" : "+NvidiaSmi")}\n")
-            .ToString();
+        string Mbps(double value) => value.ToString("0.0", CultureInfo.InvariantCulture);
+        var values = new Dictionary<string, string>
+        {
+            ["CPU"] = Round(cpuTemp),
+            ["GPUCore"] = Round(gpuCore),
+            ["GPUHotspot"] = Round(gpuHotspot),
+            ["GPUMemory"] = Round(gpuMemory),
+            ["VRAMUsedMB"] = Round(vramUsedMb),
+            ["VRAMTotalMB"] = Round(vramTotalMb),
+            ["VRAMPct"] = Round(vramPct),
+            ["GPUFan"] = Round(gpuFan),
+            ["GPUFanPct"] = Round(gpuFanPct),
+            ["CPUFan"] = Round(cpuFan),
+            ["PSUFan"] = Round(psuFan),
+            ["NetEthInMbps"] = Mbps(network.EthInMbps),
+            ["NetEthOutMbps"] = Mbps(network.EthOutMbps),
+            ["NetWifiInMbps"] = Mbps(network.WifiInMbps),
+            ["NetWifiOutMbps"] = Mbps(network.WifiOutMbps),
+            ["NetWifiApInMbps"] = Mbps(network.WifiApInMbps),
+            ["NetWifiApOutMbps"] = Mbps(network.WifiApOutMbps),
+            ["NetWifiActiveMode"] = network.WifiActiveMode,
+            ["NetWifiActiveInMbps"] = Mbps(network.WifiActiveInMbps),
+            ["NetWifiActiveOutMbps"] = Mbps(network.WifiActiveOutMbps),
+            ["NetWifiActiveDlMbps"] = Mbps(network.WifiActiveDlMbps),
+            ["NetWifiActiveUlMbps"] = Mbps(network.WifiActiveUlMbps),
+            ["BridgeSource"] = $"LibreHardwareMonitor{(nvidiaGpu is null ? "" : "+NvidiaSmi")}",
+        };
+        for (var i = 0; i < 7; i++)
+        {
+            values[$"BoardFan{i + 1}"] = Round(boardFansArray[i]);
+        }
+        foreach (var (key, value) in panel.Concat(CodexBridge.HardwareSensors.ListValues(sensors, fanList, tempList)))
+        {
+            values[key] = value;
+        }
+        var content = CodexBridge.TempsFile.Format(fileKeys, values);
+
+        // The settings window lists this PC's GPUs, fans, temperatures and drives from here.
+        if (DateTime.UtcNow - inventoryAt > TimeSpan.FromSeconds(2))
+        {
+            SafeWriteAllText(inventoryFile, CodexBridge.HardwareSensors.Inventory(sensors, fanList, linkMbps).ToJsonString());
+            inventoryAt = DateTime.UtcNow;
+        }
 
         SafeWriteAllText(outFile, content);
         Console.Write(content);
@@ -265,7 +308,7 @@ do
             lastErrorLog = DateTime.UtcNow;
         }
 
-        TryWriteNvidiaFallback(outFile);
+        TryWriteNvidiaFallback(outFile, fileKeys);
     }
 
     if (onceMode)
@@ -296,6 +339,7 @@ static void GetSensorsRecursive(IHardware hardware, List<SimpleSensor> list)
                 Type = sensor.SensorType,
                 Value = sensor.Value,
                 HardwareName = hardware.Name,
+                HardwareIdentifier = hardware.Identifier.ToString(),
                 HardwareType = hardware.HardwareType
             });
         }
@@ -409,13 +453,13 @@ static string Round(float? value)
         : "0";
 }
 
-static void TryWriteNvidiaFallback(string outFile)
+static void TryWriteNvidiaFallback(string outFile, List<string>? keys)
 {
     try
     {
         var existing = ReadExisting(outFile);
         var gpu = QueryNvidiaSmi();
-        if (gpu is null)
+        if (gpu is null || keys is null)
         {
             return;
         }
@@ -430,41 +474,7 @@ static void TryWriteNvidiaFallback(string outFile)
         existing["GPUFanPct"] = Round(gpu.Value.FanPct);
         existing["BridgeSource"] = "NvidiaSmiFallback";
 
-        var content = new StringBuilder()
-            .Append($"CPU={Get(existing, "CPU")}\n")
-            .Append($"GPUCore={Get(existing, "GPUCore")}\n")
-            .Append($"GPUHotspot={Get(existing, "GPUHotspot")}\n")
-            .Append($"GPUMemory={Get(existing, "GPUMemory")}\n")
-            .Append($"VRAMUsedMB={Get(existing, "VRAMUsedMB")}\n")
-            .Append($"VRAMTotalMB={Get(existing, "VRAMTotalMB")}\n")
-            .Append($"VRAMPct={Get(existing, "VRAMPct")}\n")
-            .Append($"GPUFan={Get(existing, "GPUFan")}\n")
-            .Append($"GPUFanPct={Get(existing, "GPUFanPct")}\n")
-            .Append($"CPUFan={Get(existing, "CPUFan")}\n")
-            .Append($"BoardFan1={Get(existing, "BoardFan1")}\n")
-            .Append($"BoardFan2={Get(existing, "BoardFan2")}\n")
-            .Append($"BoardFan3={Get(existing, "BoardFan3")}\n")
-            .Append($"BoardFan4={Get(existing, "BoardFan4")}\n")
-            .Append($"BoardFan5={Get(existing, "BoardFan5")}\n")
-            .Append($"BoardFan6={Get(existing, "BoardFan6")}\n")
-            .Append($"BoardFan7={Get(existing, "BoardFan7")}\n")
-            .Append($"PSUFan={Get(existing, "PSUFan")}\n")
-            .Append($"NetEthInMbps={Get(existing, "NetEthInMbps")}\n")
-            .Append($"NetEthOutMbps={Get(existing, "NetEthOutMbps")}\n")
-            .Append($"NetWifiInMbps={Get(existing, "NetWifiInMbps")}\n")
-            .Append($"NetWifiOutMbps={Get(existing, "NetWifiOutMbps")}\n")
-            .Append($"NetWifiApInMbps={Get(existing, "NetWifiApInMbps")}\n")
-            .Append($"NetWifiApOutMbps={Get(existing, "NetWifiApOutMbps")}\n")
-            .Append($"NetWifiActiveMode={Get(existing, "NetWifiActiveMode")}\n")
-            .Append($"NetWifiActiveInMbps={Get(existing, "NetWifiActiveInMbps")}\n")
-            .Append($"NetWifiActiveOutMbps={Get(existing, "NetWifiActiveOutMbps")}\n")
-            .Append($"NetWifiActiveDlMbps={Get(existing, "NetWifiActiveDlMbps")}\n")
-            .Append($"NetWifiActiveUlMbps={Get(existing, "NetWifiActiveUlMbps")}\n")
-            .Append(string.Concat(CodexBridge.NetPanel.Keys.Select(key => $"{key}={Get(existing, key)}\n")))
-            .Append($"BridgeSource={Get(existing, "BridgeSource")}\n")
-            .ToString();
-
-        SafeWriteAllText(outFile, content);
+        SafeWriteAllText(outFile, CodexBridge.TempsFile.Format(keys, existing));
     }
     catch
     {
@@ -756,6 +766,7 @@ sealed class SimpleSensor
     public SensorType Type { get; set; }
     public float? Value { get; set; }
     public string HardwareName { get; set; } = "";
+    public string HardwareIdentifier { get; set; } = "";
     public HardwareType HardwareType { get; set; }
 }
 
