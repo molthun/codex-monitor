@@ -9,13 +9,16 @@ Modes:
   --once     write once and exit
   --dump     print every hwmon sensor and exit
 """
+import ipaddress
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 import threading
 import time
+import urllib.request
 
 CONFIG_DIR = os.path.join(os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")), "codex-monitor")
 CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
@@ -31,7 +34,10 @@ DEFAULT_CONFIG = {
         "ignoreAdaptersContaining": ["lo", "docker", "veth", "br-", "virbr", "vnet", "tun", "tap", "wg", "tailscale", "zt"],
         "wifiPrefixes": ["wl"],
         "ethernetPrefixes": ["en", "eth"],
+        "splitFile": "/run/codex-monitor/netsplit.json",
+        "topProcesses": 3,
     },
+    "update": {"check": True, "intervalHours": 6},
 }
 
 
@@ -262,7 +268,10 @@ class Network:
             mode, a_in, a_out, dl, ul = "WiFi", wifi[0], wifi[1], wifi[0], wifi[1]
         else:
             mode, a_in, a_out, dl, ul = "Off", 0.0, 0.0, 0.0, 0.0
+        speeds = [read_int(f"/sys/class/net/{i}/speed") for i, (k, _, _) in counters.items() if k == "eth"]
+        speeds = [v for v in speeds if v and v > 0]
         return {
+            "NetLinkMbps": max(speeds) if speeds else None,
             "NetEthInMbps": eth[0], "NetEthOutMbps": eth[1],
             "NetWifiInMbps": wifi[0], "NetWifiOutMbps": wifi[1],
             "NetWifiApInMbps": ap[0], "NetWifiApOutMbps": ap[1],
@@ -271,6 +280,220 @@ class Network:
             "NetWifiActiveDlMbps": dl, "NetWifiActiveUlMbps": ul,
             "NetDownMbps": eth[0] + wifi[0] + ap[0],
             "NetUpMbps": eth[1] + wifi[1] + ap[1],
+        }
+
+
+# ---------------------------------------------------------------- Internet / LAN
+
+class LanClassifier:
+    """LAN = private, link-local and multicast ranges plus every on-link (gateway-less) route."""
+
+    def __init__(self):
+        self.nets = []
+        self.at = -1e9
+
+    def _refresh(self):
+        if time.monotonic() - self.at < 30:
+            return
+        self.at = time.monotonic()
+        nets = []
+        for family in ("-4", "-6"):
+            out = subprocess.run(["ip", "-j", family, "route", "show", "table", "main"],
+                                 capture_output=True, text=True).stdout
+            try:
+                routes = json.loads(out or "[]")
+            except ValueError:
+                routes = []
+            for route in routes:
+                dst = route.get("dst")
+                if (route.get("gateway") or route.get("nexthops") or dst in (None, "default")
+                        or route.get("type", "unicast") != "unicast"):
+                    continue
+                try:
+                    nets.append(ipaddress.ip_network(dst, strict=False))
+                except ValueError:
+                    pass
+        self.nets = nets
+
+    def is_lan(self, ip):
+        self._refresh()
+        return ip.is_private or ip.is_link_local or ip.is_multicast or any(ip in net for net in self.nets)
+
+
+def parse_addr(text):
+    """'1.2.3.4:443', '[2a00::1]:443', '[::ffff:1.2.3.4]:443', 'fe80::1%eno1:22' -> ip_address."""
+    host = text.rsplit(":", 1)[0].strip("[]").split("%")[0]
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    return ip.ipv4_mapped or ip if ip.version == 6 else ip
+
+
+class ProcessTraffic:
+    """Per-process TCP throughput from the kernel's per-socket byte counters (ss / tcp_info).
+
+    Sockets owned by other users have no visible process unless the bridge runs as root;
+    they are grouped as "system". UDP (QUIC, games, uTP) has no per-socket counters, so the
+    bridge reports it as the difference between interface traffic and attributed TCP.
+    """
+    HEAD = re.compile(r'users:\(\("([^"]+)",pid=(\d+)')
+    KEY = re.compile(r'\b(?:ino|sk):(\S+)')
+    BYTES = re.compile(r'\b(bytes_received|bytes_acked):(\d+)')
+
+    def __init__(self, classifier):
+        self.lan = classifier
+        self.prev = None
+        self.prev_at = None
+        self.names = {}
+
+    def _name(self, comm, pid):
+        """Full program name: comm is cut at 15 characters, argv[0] is not."""
+        if pid not in self.names:
+            try:
+                with open(f"/proc/{pid}/cmdline", "rb") as f:
+                    argv0 = os.path.basename(f.read().split(b"\0", 1)[0].decode(errors="replace").split(" ")[0])
+            except OSError:
+                argv0 = ""
+            self.names[pid] = argv0 if argv0.startswith(comm) else comm
+            if len(self.names) > 4096:
+                self.names.clear()
+        return self.names[pid]
+
+    def sample(self):
+        """Returns ({name: [wanDown, wanUp, lanDown, lanUp] Mbps}, ok)."""
+        if not shutil.which("ss"):
+            return {}, False
+        out = subprocess.run(["ss", "-tinpHe", "state", "established"],
+                             capture_output=True, text=True).stdout
+        now = time.monotonic()
+        current, owners = {}, {}
+        head = None
+        for line in out.splitlines():
+            if not line[:1].isspace():
+                head = line
+                continue
+            if head is None:
+                continue
+            cols = head.split()
+            peer = parse_addr(cols[3]) if len(cols) > 3 else None
+            if peer is None or peer.is_loopback:
+                continue
+            key = tuple(self.KEY.findall(head)) or (cols[2], cols[3])
+            counters = dict(self.BYTES.findall(line))
+            current[key] = (int(counters.get("bytes_received", 0)), int(counters.get("bytes_acked", 0)))
+            proc = self.HEAD.search(head)
+            owners[key] = (self._name(*proc.groups()) if proc else "system", self.lan.is_lan(peer))
+            head = None
+
+        procs = {}
+        if self.prev is not None and now > self.prev_at:
+            scale = 8 / (now - self.prev_at) / 1e6
+            for key, (rx, tx) in current.items():
+                # New sockets were opened during this interval: count everything they moved.
+                prx, ptx = self.prev.get(key, (0, 0))
+                name, lan = owners[key]
+                row = procs.setdefault(name, [0.0, 0.0, 0.0, 0.0])
+                base = 2 if lan else 0
+                row[base] += max(rx - prx, 0) * scale
+                row[base + 1] += max(tx - ptx, 0) * scale
+        self.prev, self.prev_at = current, now
+        return procs, True
+
+
+class NetSplit:
+    """Exact Internet/LAN rates from codex-netsplit (optional root service, see linux/netsplit)."""
+    KEYS = ("wanIn", "wanOut", "lanIn", "lanOut")
+
+    def __init__(self, path):
+        self.path = path
+        self.prev = None
+        self.rates = [0.0] * 4
+
+    def sample(self):
+        try:
+            with open(self.path) as f:
+                cur = json.load(f)
+        except (OSError, ValueError):
+            cur = None
+        if not cur or time.monotonic() - cur.get("mono", 0) > 3:
+            self.prev = None
+            return None
+        prev, self.prev = self.prev, cur
+        # The helper and the bridge tick independently; reuse the last rates for a repeated snapshot.
+        if prev and cur["mono"] > prev["mono"]:
+            dt = cur["mono"] - prev["mono"]
+            self.rates = [max(cur[k] - prev[k], 0) * 8 / dt / 1e6 for k in self.KEYS]
+        return self.rates
+
+
+def traffic_split(net, split_rates, procs, procs_ok, top_n):
+    """Internet/LAN rates (exact from codex-netsplit, else estimated from TCP) and the top processes."""
+    down, up = net["NetDownMbps"], net["NetUpMbps"]
+    tcp = [sum(p[i] for p in procs.values()) for i in range(4)]
+    if split_rates is not None:
+        mode = "exact"
+        wan_down, wan_up, lan_down, lan_up = split_rates
+    else:
+        # Scale the interface totals by the TCP Internet/LAN ratio; unattributed traffic counts as Internet.
+        mode = "estimate" if procs_ok else "none"
+        lan_down = min(down * tcp[2] / (tcp[0] + tcp[2]), down) if tcp[0] + tcp[2] > 0 else 0.0
+        lan_up = min(up * tcp[3] / (tcp[1] + tcp[3]), up) if tcp[1] + tcp[3] > 0 else 0.0
+        wan_down, wan_up = down - lan_down, up - lan_up
+
+    top = sorted(procs.items(), key=lambda kv: -sum(kv[1]))
+    top = [{"name": name, "wanDown": r[0], "wanUp": r[1], "lanDown": r[2], "lanUp": r[3]}
+           for name, r in top[:top_n] if sum(r) >= 0.05]
+    return {
+        "NetSplitMode": mode,
+        "NetWanDownMbps": wan_down, "NetWanUpMbps": wan_up,
+        "NetLanDownMbps": lan_down, "NetLanUpMbps": lan_up,
+        "NetTopProcesses": top,
+        # UDP/QUIC and sockets that closed between samples.
+        "NetOtherDownMbps": max(down - tcp[0] - tcp[2], 0.0),
+        "NetOtherUpMbps": max(up - tcp[1] - tcp[3], 0.0),
+    }
+
+
+# ---------------------------------------------------------------- updates
+
+def version_key(tag):
+    """'v2.1.0' / 'v2.0.0-11-g5724a8a' -> (2, 1, 0); None if it is not a version."""
+    match = re.match(r"v?(\d+(?:\.\d+)*)", tag or "")
+    return tuple(int(x) for x in match.group(1).split(".")) if match else None
+
+
+class UpdateChecker:
+    """Polls the latest GitHub release in the background, like the Windows display watcher."""
+    URL = "https://api.github.com/repos/molthun/codex-monitor/releases/latest"
+
+    def __init__(self, cfg):
+        self.local = read(os.path.join(HERE, "VERSION"), "unknown")
+        self.release = None
+        if cfg.get("check", True):
+            self.interval = max(float(cfg.get("intervalHours") or 6), 1) * 3600
+            threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        time.sleep(15)  # let the session settle (network, shell) after login
+        while True:
+            try:
+                request = urllib.request.Request(self.URL, headers={"User-Agent": "CodexMonitor-Updater"})
+                with urllib.request.urlopen(request, timeout=20) as response:
+                    release = json.load(response)
+                self.release = {"tag": release["tag_name"], "url": release.get("html_url")}
+            except (OSError, ValueError, KeyError):
+                pass  # offline or rate-limited: keep the last answer, retry next round
+            time.sleep(self.interval)
+
+    def snapshot(self):
+        remote = self.release
+        local_key = version_key(self.local)
+        newer = remote and version_key(remote["tag"]) and (local_key is None or version_key(remote["tag"]) > local_key)
+        return {
+            "Version": self.local,
+            "UpdateAvailable": remote["tag"] if newer else None,
+            "UpdateUrl": remote["url"] if newer else None,
         }
 
 
@@ -343,14 +566,21 @@ def main():
     nvidia = NvidiaReader(int(interval * 1000))
     cpu = CpuLoad()
     net = Network(cfg["network"])
+    split = NetSplit(cfg["network"].get("splitFile") or DEFAULT_CONFIG["network"]["splitFile"])
+    processes = ProcessTraffic(LanClassifier())
+    top_n = int(cfg["network"].get("topProcesses", 3))
     disks = Disks(cfg["disks"])
+    updates = UpdateChecker(cfg.get("update", {}))
     net.sample()
+    split.sample()
+    processes.sample()
     disks.sample()
     time.sleep(1 if once else interval)
 
     fan_cfg = cfg["fans"]
     while True:
         fans = board_fans(fan_cfg.get("chip") or "nct")
+        net_data = net.sample()
         data = {
             "CPU": cpu_temp(),
             "CPULoad": cpu.value(),
@@ -361,8 +591,10 @@ def main():
             "CaseFan": fans.get(fan_cfg.get("case")),
             "PSUFan": fans.get(fan_cfg.get("psu")),
             "FansAvailable": bool(fans),
-            **net.sample(),
+            **net_data,
+            **traffic_split(net_data, split.sample(), *processes.sample(), top_n),
             "Disks": disks.sample(),
+            **updates.snapshot(),
             "BridgeSource": "hwmon+NvidiaSmi" if nvidia.latest else "hwmon",
             "Timestamp": time.time(),
         }

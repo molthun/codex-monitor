@@ -11,6 +11,11 @@ UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 
 echo "==> Bridge -> $DATA/codex-monitor"
 install -Dm755 "$SRC/bridge/codex-bridge.py" "$DATA/codex-monitor/codex-bridge.py"
+install -Dm755 "$SRC/update.sh" "$DATA/codex-monitor/update.sh"
+# Release tag for the update check: set by update.sh, or taken from a git checkout.
+VERSION="${CODEX_MONITOR_VERSION:-$(git -C "$SRC" describe --tags 2>/dev/null || echo unknown)}"
+echo "$VERSION" > "$DATA/codex-monitor/VERSION"
+echo "==> Version $VERSION"
 
 if [[ ! -f "$CONF/config.json" ]]; then
     echo "==> Config -> $CONF/config.json"
@@ -44,5 +49,10 @@ if ! ls /sys/class/hwmon/*/name 2>/dev/null | xargs cat 2>/dev/null | grep -q '^
     echo
     echo "Note: motherboard fan sensors are not available. To enable them (Nuvoton SuperIO):"
     echo "  sudo modprobe nct6775 && echo nct6775 | sudo tee /etc/modules-load.d/nct6775.conf"
+fi
+if [[ ! -f /etc/systemd/system/codex-monitor-netsplit.service ]]; then
+    echo
+    echo "Note: the Internet/LAN split is estimated from TCP connections. For exact numbers run:"
+    echo "  ./install-netsplit.sh   (system service, asks for sudo)"
 fi
 echo "Done."

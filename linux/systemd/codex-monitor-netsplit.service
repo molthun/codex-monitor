@@ -1,0 +1,13 @@
+[Unit]
+Description=CodexMonitor Internet/LAN traffic split (nftables counters for the widget)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/lib/codex-monitor/codex-netsplit.py
+ExecStopPost=-nft delete table inet codex_monitor
+RuntimeDirectory=codex-monitor
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

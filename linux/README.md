@@ -81,10 +81,50 @@ The widget reloads it automatically; restart the bridge after bridge changes:
 | `widget.profile` | `Auto`, `1080p`, `2K` or `4K` |
 | `widget.autoProfileThresholds` | physical screen height for `2K` / `4K` in Auto mode |
 | `widget.diskLabels` | display names for mount points |
-| `widget.netMaxMbps`, `diskIOMaxMBs`, `fanMaxRpm` | full-scale values for bars |
+| `update.check`, `update.intervalHours` | new-release check (notification with an Update button) |
+| `network.topProcesses` | how many processes the network panel lists |
+| `widget.internetDownMbps` / `internetUpMbps` | your Internet plan: tick on the bars, graph scale step, amber when ≥ 90% used |
+| `widget.lanMbps` | full scale of the Download/Upload bars; `0` = NIC link speed |
+| `widget.diskIOMaxMBs`, `fanMaxRpm` | full-scale values for bars |
 
 Size profiles: 1080p ≈ 430 px wide, 2K ≈ 540 px, 4K ≈ 720 px. In Auto mode the
 widget also shrinks if it would not fit the screen height.
+
+## Network panel
+
+Download and Upload are each one bar split by color: **blue = Internet**, **mint = LAN**.
+The bars span the NIC link speed; the white tick marks the Internet plan and turns amber
+when the plan is ≥ 90% used. The graph is mirrored (download above the middle line,
+upload below) with the same colors, and its scale snaps to round values and to your
+plan speed. A dashed line shows the plan when LAN traffic pushes the scale past it.
+
+LAN means private, link-local and multicast addresses plus on-link subnets; everything
+else is Internet.
+
+**Top processes** lists who is using the network right now, from the kernel's per-socket
+TCP counters (`ss`); the dot shows whether the process talks mostly to the Internet or the
+LAN. Processes of other users appear as `system`. UDP (QUIC in browsers, games) has no
+per-process counters and shows up as `UDP / other` when it is a noticeable share.
+
+By default the Internet/LAN split is **estimated** from those TCP connections (`est.` next
+to the graph scale). For exact numbers install the optional root helper, which counts every
+packet with nftables:
+
+```bash
+./install-netsplit.sh   # system service codex-monitor-netsplit, asks for sudo
+```
+
+## Updates
+
+The bridge checks the latest GitHub release every 6 hours (`update.check`,
+`update.intervalHours`). When a newer version is out, GNOME shows a notification with
+**Update now** and **Release notes**, and the widget subtitle says so. Update now downloads
+the release and reruns `install.sh` (your config is kept); log out and back in afterwards,
+since GNOME Shell loads extension code only at login. If the Internet/LAN helper is
+installed and changed, the update asks for your password to refresh it.
+
+Manual update or check: `~/.local/share/codex-monitor/update.sh` (latest) or
+`update.sh v2.1.0` (a specific release). Log: `~/.cache/codex-monitor/update.log`.
 
 ## Debugging
 

@@ -13,31 +13,46 @@ import Pango from 'gi://Pango';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as MessageTray from 'resource:///org/gnome/shell/ui/messageTray.js';
 
 Gio._promisify(Gio.File.prototype, 'load_contents_async');
+Gio._promisify(Gio.Subprocess.prototype, 'wait_check_async');
 
 const CONFIG_PATH = GLib.build_filenamev([GLib.get_user_config_dir(), 'codex-monitor', 'config.json']);
 const DEFAULT_SENSORS_PATH = GLib.build_filenamev([GLib.get_user_runtime_dir(), 'codex-monitor', 'sensors.json']);
+const UPDATER_PATH = GLib.build_filenamev([GLib.get_user_data_dir(), 'codex-monitor', 'update.sh']);
+const UPDATE_LOG = GLib.build_filenamev([GLib.get_user_cache_dir(), 'codex-monitor', 'update.log']);
+
+// Outlives disable/enable (screen lock), so a dismissed update offer is not repeated this session.
+let dismissedUpdateTag = null;
 const STALE_SECONDS = 5;
 const GRAPH_POINTS = 60;
+const TOP_ROWS = 3;
+// Internet share of the plan at which the link counts as maxed out.
+const SATURATED = 0.9;
+// Graph full-scale steps; the configured plan and link speeds are added to them.
+const NICE_SCALES = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 2500, 5000, 10000, 25000, 40000, 100000];
 
 // Palette and gradients copied from the Rainmeter skin [Variables].
 const COLOR = {
     muted: 'rgba(154,166,178,0.92)',
     cpu: '#00e5ff', ram: '#45c997', gpu: '#9788ff', net: '#58b3ff', disk: '#74d684',
     ok: '#00e5ff', warm: '#ffc15e', hot: '#ff7171',
+    wan: '#58b3ff', lan: '#1de9b6',
 };
+const RGB = {wan: [0x58, 0xb3, 0xff], lan: [0x1d, 0xe9, 0xb6]};
 const GRADIENT = {
     cpu: ['#00e5ff', '#0091ea'],
     ram: ['#45c997', '#00e676'],
     gpu: ['#9788ff', '#e0c3fc'],
-    net: ['#2979ff', '#00e5ff'],
+    wan: ['#2979ff', '#58b3ff'],
+    lan: ['#00bfa5', '#1de9b6'],
     disk: ['#74d684', '#8bc34a'],
 };
 
 // 1080p skin geometry; larger profiles scale it (430 -> 540 / 720 px wide).
 const BASE = {width: 430, pad: 18, barH: 7, barR: 3, rowGap: 2, barGap: 4, sectionGap: 11,
-    title: 19, subtitle: 11, label: 13, section: 11, health: 12, icon: 14, graphH: 70};
+    title: 19, subtitle: 11, label: 13, section: 11, health: 12, icon: 14, graphH: 70, proc: 12};
 const PROFILE_SCALE = {'1080p': 1, '2k': 540 / 430, '4k': 720 / 430};
 
 const DEFAULT_WIDGET_CONFIG = {
@@ -45,7 +60,11 @@ const DEFAULT_WIDGET_CONFIG = {
     autoProfileThresholds: {'2K': 1400, '4K': 2000},
     marginRight: 24,
     marginTop: 24,
-    netMaxMbps: 1000,
+    // Internet plan (bars mark it, the graph snaps to it); 0 = unknown.
+    internetDownMbps: 0,
+    internetUpMbps: 0,
+    // Full scale of the Download/Upload bars; 0 = NIC link speed.
+    lanMbps: 0,
     diskIOMaxMBs: 1000,
     fanMaxRpm: 2500,
     diskLabels: {},
@@ -61,6 +80,25 @@ function fmt(value, digits = 0, suffix = '') {
     if (value === null || value === undefined || Number.isNaN(value))
         return 'n/a';
     return `${value.toFixed(digits)}${suffix}`;
+}
+
+function fmtRate(mbps) {
+    if (!(mbps > 0))
+        return '0 Mbps';
+    if (mbps < 1)
+        return `${Math.round(mbps * 1000)} Kbps`;
+    if (mbps < 1000)
+        return `${mbps.toFixed(mbps < 10 ? 1 : 0)} Mbps`;
+    return `${(mbps / 1000).toFixed(2)} Gbps`;
+}
+
+// Smallest step above the peak, capped at the link speed (the largest of `extra`).
+function niceScale(peak, extra) {
+    const limit = Math.max(...extra);
+    const steps = [...NICE_SCALES, ...extra.filter(v => v > 0)]
+        .filter(v => peak > limit || v <= limit)
+        .sort((a, b) => a - b);
+    return steps.find(v => v >= peak * 1.05) ?? steps[steps.length - 1];
 }
 
 function fmtBytes(bytes) {
@@ -79,7 +117,9 @@ class MonitorWidget {
         this._k = scale;
         this._cfg = widgetConfig;
         // Start with a flat baseline so the graph spans the full width at once.
-        this._netHistory = Array.from({length: GRAPH_POINTS}, () => [0, 0]);
+        // [Internet down, LAN down, Internet up, LAN up] in Mbps.
+        this._netHistory = Array.from({length: GRAPH_POINTS}, () => [0, 0, 0, 0]);
+        this._graphMax = 10;
 
         const s = n => Math.round(n * scale);
         this._s = s;
@@ -112,8 +152,9 @@ class MonitorWidget {
 
         this._netTitle = this._section('net.png', 'NETWORK TRAFFIC', true);
         this._buildGraph();
-        this._netDown = this._row('Download', COLOR.net);
-        this._netUp = this._row('Upload', COLOR.gpu);
+        this._netDown = this._splitRow('Download');
+        this._netUp = this._splitRow('Upload');
+        this._buildTopProcesses();
         this._buildNetFooter();
 
         this._section('disk.png', 'DISK I/O');
@@ -243,43 +284,118 @@ class MonitorWidget {
         this.actor.add_child(this._graph);
 
         const legend = new St.BoxLayout({x_expand: true, style: `margin-top: ${s(4)}px; spacing: ${s(6)}px;`});
-        for (const [color, text] of [[COLOR.net, 'Download'], [COLOR.gpu, 'Upload']]) {
+        for (const [color, text] of [[COLOR.wan, 'Internet'], [COLOR.lan, 'LAN']]) {
             legend.add_child(new St.Widget({
-                style: `width: ${s(10)}px; height: ${s(2)}px; background-color: ${color};`,
+                style: `width: ${s(10)}px; height: ${s(6)}px; border-radius: 1px; background-color: ${color};`,
                 y_align: Clutter.ActorAlign.CENTER,
             }));
             legend.add_child(this._label(text, BASE.subtitle, {muted: true, style: `margin-right: ${s(8)}px;`}));
         }
-        legend.add_child(this._label('auto scale', BASE.subtitle, {muted: true, expand: true, align: Clutter.ActorAlign.END}));
+        legend.add_child(this._label('↓ above · ↑ below', BASE.subtitle, {muted: true}));
+        this._scaleLabel = this._label('', BASE.subtitle, {muted: true, expand: true, align: Clutter.ActorAlign.END});
+        legend.add_child(this._scaleLabel);
         this.actor.add_child(legend);
     }
 
+    // Mirrored graph: download grows up from the middle, upload grows down.
+    // Each side stacks Internet (bottom layer) and LAN on top of it.
     _paintGraph(area) {
         const cr = area.get_context();
         const [w, h] = area.get_surface_size();
         const history = this._netHistory;
-        if (history.length > 1) {
-            const max = Math.max(1, ...history.map(p => Math.max(p[0], p[1]))) * 1.15;
-            const step = w / (GRAPH_POINTS - 1);
-            const x0 = w - (history.length - 1) * step;
-            const y = v => h - 2 - (v / max) * (h - 4);
+        const max = this._graphMax;
+        const mid = Math.round(h / 2) + 0.5;
+        const half = h / 2 - 2;
+        const step = w / (GRAPH_POINTS - 1);
+        const x0 = w - (history.length - 1) * step;
+        const x = i => x0 + i * step;
+        const sides = [
+            {y: v => mid - Math.min(v / max, 1) * half, wan: p => p[0], total: p => p[0] + p[1], cap: this._capDown},
+            {y: v => mid + Math.min(v / max, 1) * half, wan: p => p[2], total: p => p[2] + p[3], cap: this._capUp},
+        ];
+        const rgba = (rgb, a) => cr.setSourceRGBA(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, a);
+        const path = (side, value) => history.forEach((p, i) => (i ? cr.lineTo : cr.moveTo).call(cr, x(i), side.y(value(p))));
 
-            // Download: filled area + line. Upload: line.
-            cr.moveTo(x0, h);
-            history.forEach((p, i) => cr.lineTo(x0 + i * step, y(p[0])));
-            cr.lineTo(w, h);
-            cr.closePath();
-            cr.setSourceRGBA(0x58 / 255, 0xb3 / 255, 1, 0.22);
-            cr.fill();
+        cr.setLineWidth(1);
+        cr.setSourceRGBA(1, 1, 1, 0.12);
+        cr.moveTo(0, mid);
+        cr.lineTo(w, mid);
+        cr.stroke();
 
-            for (const [idx, rgb] of [[0, [0x58, 0xb3, 0xff]], [1, [0x97, 0x88, 0xff]]]) {
-                history.forEach((p, i) => (i ? cr.lineTo : cr.moveTo).call(cr, x0 + i * step, y(p[idx])));
-                cr.setSourceRGBA(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, 0.95);
-                cr.setLineWidth(Math.max(1.2, 1.4 * this._k));
+        for (const side of sides) {
+            // Internet plan ceiling, once the scale grows past it (LAN traffic).
+            if (side.cap > 0 && side.cap < max) {
+                const yc = Math.round(side.y(side.cap)) + 0.5;
+                cr.setDash([3 * this._k, 3 * this._k], 0);
+                cr.setSourceRGBA(1, 1, 1, 0.28);
+                cr.moveTo(0, yc);
+                cr.lineTo(w, yc);
+                cr.stroke();
+                cr.setDash([], 0);
+            }
+            for (const [lower, upper, rgb] of [[() => 0, side.wan, RGB.wan], [side.wan, side.total, RGB.lan]]) {
+                path(side, upper);
+                for (let i = history.length - 1; i >= 0; i--)
+                    cr.lineTo(x(i), side.y(lower(history[i])));
+                cr.closePath();
+                rgba(rgb, 0.3);
+                cr.fill();
+            }
+            // LAN edge first, so the Internet edge wins where the LAN layer is empty.
+            cr.setLineWidth(Math.max(1.2, 1.4 * this._k));
+            for (const [value, rgb] of [[side.total, RGB.lan], [side.wan, RGB.wan]]) {
+                path(side, value);
+                rgba(rgb, 0.95);
                 cr.stroke();
             }
         }
         cr.$dispose();
+    }
+
+    // One bar per direction: an Internet segment followed by a LAN segment, scaled to the link speed,
+    // with a tick at the Internet plan speed.
+    _splitRow(title) {
+        const s = this._s;
+        const line = new St.BoxLayout({x_expand: true, style: `margin-top: ${s(BASE.rowGap)}px; spacing: ${s(6)}px;`});
+        const label = this._label(title, BASE.label, {muted: true, expand: true});
+        // Separate labels: St recolors the first span of Pango markup.
+        const wanValue = this._label('', BASE.label, {align: Clutter.ActorAlign.END});
+        const lanValue = this._label('', BASE.label, {align: Clutter.ActorAlign.END});
+        line.add_child(label);
+        line.add_child(wanValue);
+        line.add_child(lanValue);
+        this.actor.add_child(line);
+
+        const track = new St.Widget({
+            style_class: 'codex-track',
+            style: `width: ${this._innerW}px; height: ${s(BASE.barH)}px; border-radius: ${s(BASE.barR)}px; margin-top: ${s(BASE.barGap)}px;`,
+        });
+        const wan = new St.Widget();
+        const lan = new St.Widget();
+        const cap = new St.Widget();
+        for (const child of [wan, lan, cap])
+            track.add_child(child);
+        this.actor.add_child(track);
+        return {label, wanValue, lanValue, wan, lan, cap};
+    }
+
+    _buildTopProcesses() {
+        const s = this._s;
+        this.actor.add_child(this._label('Top processes', BASE.subtitle, {muted: true,
+            style: `margin-top: ${s(8)}px; margin-bottom: ${s(2)}px;`}));
+        this._procRows = [];
+        for (let i = 0; i < TOP_ROWS; i++) {
+            const line = new St.BoxLayout({x_expand: true, style: `spacing: ${s(6)}px;`});
+            const dot = new St.Widget({y_align: Clutter.ActorAlign.CENTER});
+            const name = this._label('', BASE.proc, {expand: true});
+            name.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+            const value = this._label('', BASE.proc, {align: Clutter.ActorAlign.END});
+            line.add_child(dot);
+            line.add_child(name);
+            line.add_child(value);
+            this.actor.add_child(line);
+            this._procRows.push({dot, name, value});
+        }
     }
 
     _buildNetFooter() {
@@ -310,6 +426,66 @@ class MonitorWidget {
         this._setBar(row.bar, fraction, alert ? COLOR[state] : colors);
     }
 
+    _setSplitRow(row, wan, lan, scale, cap, split) {
+        const s = this._s;
+        const h = s(BASE.barH);
+        const r = s(BASE.barR);
+        const width = this._innerW;
+        const wanW = Math.round(width * Math.max(0, Math.min(1, wan / scale)));
+        const lanW = Math.min(Math.round(width * Math.max(0, Math.min(1, lan / scale))), width - wanW);
+        const segment = (actor, x, w, [start, end], roundLeft, roundRight) => {
+            actor.visible = w > 0;
+            actor.set_position(x, 0);
+            const [left, right] = [roundLeft ? r : 0, roundRight ? r : 0];
+            actor.set_style(`width: ${w}px; height: ${h}px; border-radius: ${left}px ${right}px ${right}px ${left}px;` +
+                `background-gradient-direction: horizontal; background-gradient-start: ${start}; background-gradient-end: ${end};`);
+        };
+        segment(row.wan, 0, wanW, GRADIENT.wan, true, lanW === 0);
+        segment(row.lan, wanW, lanW, GRADIENT.lan, wanW === 0, true);
+
+        const maxed = split && cap > 0 && wan >= cap * SATURATED;
+        row.cap.visible = cap > 0 && cap < scale;
+        if (row.cap.visible) {
+            const tickW = Math.max(1, s(2));
+            row.cap.set_position(Math.round(width * cap / scale - tickW / 2), -s(2));
+            row.cap.set_style(`width: ${tickW}px; height: ${h + 2 * s(2)}px;` +
+                `background-color: ${maxed ? COLOR.warm : 'rgba(255,255,255,0.55)'};`);
+        }
+
+        row.label.set_style(`font-size: ${s(BASE.label)}px;${maxed ? ` color: ${COLOR.warm};` : ''}`);
+        row.wanValue.text = split ? `Internet ${fmtRate(wan)}` : fmtRate(wan);
+        row.wanValue.set_style(`font-size: ${s(BASE.label)}px;` +
+            `${split ? ` color: ${COLOR.wan};` : ''}${maxed ? ' font-weight: bold;' : ''}`);
+        row.lanValue.visible = split;
+        row.lanValue.text = `LAN ${fmtRate(lan)}`;
+        row.lanValue.set_style(`font-size: ${s(BASE.label)}px; color: ${COLOR.lan};`);
+    }
+
+    _setTopProcesses(d, total) {
+        const entries = (d.NetTopProcesses || []).map(p => ({
+            name: p.name,
+            down: p.wanDown + p.lanDown,
+            up: p.wanUp + p.lanUp,
+            color: p.lanDown + p.lanUp > p.wanDown + p.wanUp ? COLOR.lan : COLOR.wan,
+        }));
+        // UDP (QUIC, games) has no per-process counters; show it when it is a real share of the traffic.
+        const otherDown = d.NetOtherDownMbps ?? 0;
+        const otherUp = d.NetOtherUpMbps ?? 0;
+        if (otherDown + otherUp >= 1 && otherDown + otherUp > 0.2 * total)
+            entries.push({name: 'UDP / other', down: otherDown, up: otherUp, color: COLOR.muted});
+        entries.sort((a, b) => b.down + b.up - (a.down + a.up));
+
+        const s = this._s;
+        this._procRows.forEach((row, i) => {
+            const e = entries[i];
+            row.dot.set_style(`width: ${s(6)}px; height: ${s(6)}px; border-radius: ${s(3)}px;` +
+                `background-color: ${e ? e.color : 'transparent'};`);
+            row.name.text = e ? e.name : i === 0 ? 'No active transfers' : ' ';
+            row.name.set_style(`font-size: ${s(BASE.proc)}px;${e ? '' : ` color: ${COLOR.muted};`}`);
+            row.value.text = e ? `↓ ${fmtRate(e.down)}  ↑ ${fmtRate(e.up)}` : '';
+        });
+    }
+
     _setHealth(key, text, state, okColor = COLOR.ok) {
         const color = state === 'ok' ? okColor : COLOR[state];
         const cell = this._health[key];
@@ -321,8 +497,11 @@ class MonitorWidget {
     update(d) {
         const cfg = this._cfg;
         const stale = !d || (Date.now() / 1000 - (d.Timestamp || 0)) > STALE_SECONDS;
-        this._subtitle.text = stale ? 'Bridge offline: codex-monitor-bridge.service' : 'Hardware bridge / desktop widget';
-        this._subtitle.set_style(`font-size: ${this._s(BASE.subtitle)}px;${stale ? ` color: ${COLOR.hot};` : ''}`);
+        const update = !stale && d.UpdateAvailable;
+        this._subtitle.text = stale ? 'Bridge offline: codex-monitor-bridge.service'
+            : update ? `Update ${d.UpdateAvailable} available: see notifications` : 'Hardware bridge / desktop widget';
+        this._subtitle.set_style(`font-size: ${this._s(BASE.subtitle)}px;` +
+            `${stale ? ` color: ${COLOR.hot};` : update ? ` color: ${COLOR.ok};` : ''}`);
         d = d || {};
 
         // Health strip — thresholds from the skin's IfCondition blocks.
@@ -363,19 +542,30 @@ class MonitorWidget {
         this._setRow(this._gpuFan, fmt(d.GPUFanPct, 0, '%'), (d.GPUFanPct ?? 0) / 100, GRADIENT.gpu);
 
         // Network
+        const mode = d.NetSplitMode || 'none';
         const down = d.NetDownMbps ?? 0;
         const up = d.NetUpMbps ?? 0;
-        this._netHistory.push([down, up]);
+        const point = mode === 'none'
+            ? [down, 0, up, 0]
+            : [d.NetWanDownMbps ?? 0, d.NetLanDownMbps ?? 0, d.NetWanUpMbps ?? 0, d.NetLanUpMbps ?? 0];
+        const link = cfg.lanMbps || d.NetLinkMbps || 1000;
+        this._capDown = cfg.internetDownMbps;
+        this._capUp = cfg.internetUpMbps;
+        this._netHistory.push(point);
         if (this._netHistory.length > GRAPH_POINTS)
             this._netHistory.shift();
+        const peak = Math.max(...this._netHistory.map(p => Math.max(p[0] + p[1], p[2] + p[3])));
+        this._graphMax = niceScale(peak, [this._capDown, this._capUp, link]);
         this._graph.queue_repaint();
-        this._netTitle.text = `DL ${down.toFixed(1)} / UL ${up.toFixed(1)} Mbps`;
-        this._setRow(this._netDown, `${down.toFixed(1)} Mbps`, down / cfg.netMaxMbps, GRADIENT.net);
-        this._setRow(this._netUp, `${up.toFixed(1)} Mbps`, up / cfg.netMaxMbps, GRADIENT.gpu);
+        this._scaleLabel.text = `${fmtRate(this._graphMax)}${mode === 'estimate' ? ' · est.' : ''}`;
+        this._netTitle.text = `↓ ${fmtRate(down)}  ↑ ${fmtRate(up)}`;
+        this._setSplitRow(this._netDown, point[0], point[1], link, this._capDown, mode !== 'none');
+        this._setSplitRow(this._netUp, point[2], point[3], link, this._capUp, mode !== 'none');
+        this._setTopProcesses(d, down + up);
         this._ethFooter.text = `ETH DL/UL ${fmt(d.NetEthInMbps, 1)}/${fmt(d.NetEthOutMbps, 1)} Mbps`;
-        const mode = d.NetWifiActiveMode || 'Off';
-        this._wifiFooter.text = mode === 'Off' ? 'Wi-Fi off'
-            : `${mode === 'AP' ? 'AP' : 'Wi-Fi'} DL/UL ${fmt(d.NetWifiActiveDlMbps, 1)}/${fmt(d.NetWifiActiveUlMbps, 1)} Mbps`;
+        const wifiMode = d.NetWifiActiveMode || 'Off';
+        this._wifiFooter.text = wifiMode === 'Off' ? 'Wi-Fi off'
+            : `${wifiMode === 'AP' ? 'AP' : 'Wi-Fi'} DL/UL ${fmt(d.NetWifiActiveDlMbps, 1)}/${fmt(d.NetWifiActiveUlMbps, 1)} Mbps`;
 
         // Disks
         const disks = d.Disks || [];
@@ -439,6 +629,9 @@ export default class CodexMonitorExtension extends Extension {
         }
         this._widget?.destroy();
         this._widget = null;
+        this._source?.destroy();
+        this._source = null;
+        this._offeredUpdateTag = null;
     }
 
     _loadConfig() {
@@ -450,6 +643,9 @@ export default class CodexMonitorExtension extends Extension {
             // No config yet: defaults are fine.
         }
         this._widgetConfig = {...DEFAULT_WIDGET_CONFIG, ...(json.widget || {})};
+        // Older configs only had netMaxMbps.
+        if (json.widget?.lanMbps === undefined && json.widget?.netMaxMbps)
+            this._widgetConfig.lanMbps = json.widget.netMaxMbps;
         this._sensorsPath = json.bridge?.outputFile
             ? json.bridge.outputFile.replace(/^~/, GLib.get_home_dir())
             : DEFAULT_SENSORS_PATH;
@@ -507,5 +703,66 @@ export default class CodexMonitorExtension extends Extension {
         }
         this._lastData = data;
         this._widget?.update(data);
+        this._offerUpdate(data);
+    }
+
+    // ------------------------------------------------------------ updates
+
+    _notify(title, body, actions = []) {
+        if (!this._source) {
+            this._source = new MessageTray.Source({
+                title: 'CodexMonitor',
+                icon: Gio.FileIcon.new(Gio.File.new_for_path(`${this.path}/icons/app_icon_colored.png`)),
+            });
+            this._source.connect('destroy', () => {
+                this._source = null;
+            });
+            Main.messageTray.add(this._source);
+        }
+        const notification = new MessageTray.Notification({source: this._source, title, body});
+        for (const [label, callback] of actions)
+            notification.addAction(label, callback);
+        this._source.addNotification(notification);
+        return notification;
+    }
+
+    _offerUpdate(data) {
+        const tag = data?.UpdateAvailable;
+        if (!tag || this._updating || tag === this._offeredUpdateTag || tag === dismissedUpdateTag)
+            return;
+        this._offeredUpdateTag = tag;
+        const actions = [['Update now', () => this._runUpdate(tag).catch(logError)]];
+        if (data.UpdateUrl)
+            actions.push(['Release notes', () => Gio.AppInfo.launch_default_for_uri(data.UpdateUrl, null)]);
+        const notification = this._notify(`CodexMonitor ${tag} is available`,
+            `Installed version: ${data.Version || 'unknown'}.`, actions);
+        notification.connect('destroy', (_n, reason) => {
+            if (reason === MessageTray.NotificationDestroyedReason.DISMISSED)
+                dismissedUpdateTag = tag;
+        });
+    }
+
+    async _runUpdate(tag) {
+        this._updating = true;
+        this._notify(`Updating CodexMonitor to ${tag}`, 'The widget keeps running meanwhile.');
+        try {
+            const proc = Gio.Subprocess.new(['bash', UPDATER_PATH, tag],
+                Gio.SubprocessFlags.STDOUT_SILENCE | Gio.SubprocessFlags.STDERR_SILENCE);
+            await proc.wait_check_async(null);
+            // GNOME Shell loads extension code only at login.
+            this._notify(`CodexMonitor updated to ${tag}`, 'Log out and back in to load the new widget.');
+        } catch (e) {
+            let reason = e.message;
+            try {
+                const [, bytes] = GLib.file_get_contents(UPDATE_LOG);
+                reason = new TextDecoder().decode(bytes).trim().split('\n').pop() || reason;
+            } catch (_) {
+                // No log: keep the process error.
+            }
+            this._notify('CodexMonitor update failed', `${reason}\nLog: ${UPDATE_LOG}`,
+                [['Retry', () => this._runUpdate(tag).catch(logError)]]);
+        } finally {
+            this._updating = false;
+        }
     }
 }
