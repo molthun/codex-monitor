@@ -63,7 +63,17 @@ BridgeSource=LibreHardwareMonitor+NvidiaSmi
 - `NetWifiActiveMode`: `WiFi`, `AP`, or `Off`.
 - `NetWifiActiveInMbps`, `NetWifiActiveOutMbps`: active Wi-Fi/AP raw interface direction.
 - `NetWifiActiveDlMbps`, `NetWifiActiveUlMbps`: user-facing download/upload for active Wi-Fi/AP mode.
+- `NetLinkMbps`, `NetSplitMode` (`estimate` / `none`), `NetDownMbps`, `NetUpMbps`: link speed, split mode and interface totals.
+- `NetWanDownMbps`, `NetLanDownMbps`, `NetWanUpMbps`, `NetLanUpMbps`: Internet/LAN split, estimated from per-connection TCP counters (unattributed traffic counts as Internet).
+- `NetTotalText`, `NetDownWanText`, `NetDownLanText`, `NetUpWanText`, `NetUpLanText`: ready-to-show rates (`470 Mbps`, `1.25 Gbps`).
+- `NetDownWanPct`, `NetDownTotalPct`, `NetUpWanPct`, `NetUpTotalPct`: bar segments in percent of the link speed (`network.lanMbps`, or the NIC speed when 0).
+- `NetPlanDownPct`, `NetPlanUpPct`: Internet plan tick position on the bars (0 = hidden); `NetDownMaxed`, `NetUpMaxed`: 1 when Internet traffic is at >= 90% of the plan.
+- `NetGraphDownWan`, `NetGraphDownTotal`, `NetGraphUpWan`, `NetGraphUpTotal`, `NetGraphPlanDown`, `NetGraphPlanUp`, `NetGraphScaleText`: mirrored graph values in percent of the current graph scale, and the scale label.
+- `NetTop1..3Name`, `NetTop1..3Icon`, `NetTop1..3Text`, `NetTop1..3Scope`: top applications by traffic; the icon is a PNG path relative to `@Resources` (`AppIcons\...`), scope is `wan`, `lan`, `other` (UDP) or `none`.
+- `UpdateAvailable`: newer release tag offered by the display watcher (from `update-status.txt`), empty otherwise.
 - `BridgeSource`: current bridge data source string.
+
+The file is UTF-8 (application names may be non-ASCII); the skin reads it with `CodePage=65001`.
 
 ## Network Direction Notes
 

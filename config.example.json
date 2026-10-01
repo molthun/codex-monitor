@@ -26,7 +26,7 @@
     "marginTop": 24,
     "watchIntervalSeconds": 5,
     "autoProfileHeightThreshold": 1600,
-    "autoUpdate": true
+    "autoUpdate": "notify"
   },
   "profiles": {
     "auto": true,
@@ -40,6 +40,9 @@
     "E:"
   ],
   "network": {
+    "internetDownMbps": 500,
+    "internetUpMbps": 500,
+    "lanMbps": 0,
     "ignoreAdaptersContaining": [
       "hyper-v",
       "virtual switch",

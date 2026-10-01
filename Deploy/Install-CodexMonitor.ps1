@@ -229,6 +229,11 @@ $watcherDest = [System.IO.Path]::GetFullPath($watcherScript)
 if ($watcherSource -ine $watcherDest) {
     Copy-Item -LiteralPath $watcherSource -Destination $watcherScript -Force
 }
+$requestSource = [System.IO.Path]::GetFullPath((Join-Path (Get-ProjectRoot) "Request-CodexMonitorUpdate.ps1"))
+$requestDest = [System.IO.Path]::GetFullPath((Join-Path $InstallRoot "Request-CodexMonitorUpdate.ps1"))
+if ((Test-Path -LiteralPath $requestSource) -and ($requestSource -ine $requestDest)) {
+    Copy-Item -LiteralPath $requestSource -Destination $requestDest -Force
+}
 if (Test-Path -LiteralPath (Join-Path $payload "@Resources")) {
     Copy-Item -LiteralPath (Join-Path $payload "@Resources") -Destination $skinTarget -Recurse -Force
 }

@@ -40,7 +40,9 @@ On Windows, hardware sensors come from a bundled CodexBridge executable using Li
 - Dedicated VRAM used/total and usage percent.
 - Board/case/PSU fan display based on hardware sensor mapping.
 - Ethernet, Wi-Fi, and Wi-Fi AP traffic split.
-- Network graph and download/upload bars.
+- Smart network panel: Download and Upload bars split into Internet (blue) and LAN (mint), scaled to the link speed with a tick at your Internet plan (`network.internetDownMbps` / `internetUpMbps`), amber when the plan is maxed out; a mirrored graph in the same colors.
+- **Top processes**: which applications use the network right now, by their readable names and icons (`Yandex Browser`, `Windows file sharing (SMB)`, service display names for `svchost`, `node · Visual Studio Code` for helpers), from per-connection TCP counters. UDP/QUIC shows up as `UDP / other`.
+- Update notifications: a new GitHub release shows a Windows notification with **Update now** and **Release notes** (`display.autoUpdate`: `"notify"` (default), `true` = install silently, `false` = off).
 - Per-disk I/O for up to three selected local drives.
 - Disk used/free bars for up to three selected local drives.
 - Automatic 1080p/4K skin profile selection.
