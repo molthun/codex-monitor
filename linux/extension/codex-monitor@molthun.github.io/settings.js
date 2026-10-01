@@ -302,6 +302,62 @@ function tempsGroup(config, inventory, onInventory) {
         'liquidctl installed. Unconnected board sensors often show nonsense values.');
 }
 
+const PLUGINS_DOC = 'https://github.com/molthun/codex-monitor/blob/main/linux/plugins/README.md';
+
+function pluginStatus(plugin) {
+    const source = plugin.source === 'bundled' ? 'Bundled' : 'Yours';
+    if (!plugin.enabled)
+        return `${source} · off`;
+    if (plugin.error)
+        return `${source} · error: ${plugin.error}`;
+    return plugin.devices.length ? `${source} · ${plugin.devices.join(', ')}` : `${source} · no devices found`;
+}
+
+/**
+ * Sensor plugins: small programs that report hardware the bridge does not know (USB fan hubs,
+ * coolers without a kernel driver). Their fans and temperatures appear in the lists above.
+ */
+function pluginsGroup(config, inventory, onInventory) {
+    const userDir = GLib.build_filenamev([GLib.get_user_config_dir(), 'codex-monitor', 'plugins']);
+    const group = new Adw.PreferencesGroup({
+        title: 'Sensor plugins',
+        description: 'For hardware with its own USB connection — fan hubs, RGB/fan controllers, coolers ' +
+            'without a kernel driver. Their fans and temperatures show up in the lists above. Put your own ' +
+            'plugin into the plugins folder; the bridge picks it up within seconds.',
+    });
+    const rows = new Map();
+    const disabled = new Set(config.get('plugins.disabled', []));
+    const show = plugins => {
+        for (const plugin of plugins ?? []) {
+            let row = rows.get(plugin.name);
+            if (!row) {
+                row = new Adw.SwitchRow({title: plugin.name, active: plugin.enabled});
+                row.connect('notify::active', () => {
+                    if (row.active)
+                        disabled.delete(plugin.name);
+                    else
+                        disabled.add(plugin.name);
+                    config.set('plugins.disabled', [...disabled]);
+                });
+                rows.set(plugin.name, row);
+                group.add(row);
+            }
+            row.subtitle = pluginStatus(plugin);
+        }
+    };
+    const actions = new Adw.ActionRow({title: 'Your plugins', subtitle: userDir});
+    actions.add_suffix(iconButton('folder-open-symbolic', 'Open the plugins folder', true, () => {
+        GLib.mkdir_with_parents(userDir, 0o755);
+        Gio.AppInfo.launch_default_for_uri(GLib.filename_to_uri(userDir, null), null);
+    }));
+    actions.add_suffix(iconButton('help-about-symbolic', 'How to write a plugin', true,
+        () => Gio.AppInfo.launch_default_for_uri(PLUGINS_DOC, null)));
+    group.add(actions);
+    show(inventory.plugins);
+    onInventory(next => show(next.plugins));
+    return group;
+}
+
 // ------------------------------------------------------------------ pages
 
 function widgetPage(config) {
@@ -382,6 +438,7 @@ function hardwarePage(config, inventory, onInventory) {
 
     page.add(fansGroup(config, inventory, onInventory));
     page.add(tempsGroup(config, inventory, onInventory));
+    page.add(pluginsGroup(config, inventory, onInventory));
 
     const drives = new Adw.PreferencesGroup({
         title: 'Drives',

@@ -12,6 +12,9 @@
   "temps": {
     "list": []
   },
+  "plugins": {
+    "disabled": []
+  },
   "gpu": {
     "device": "auto"
   },

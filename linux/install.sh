@@ -12,6 +12,10 @@ UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 echo "==> Bridge -> $DATA/codex-monitor"
 install -Dm755 "$SRC/bridge/codex-bridge.py" "$DATA/codex-monitor/codex-bridge.py"
 install -Dm755 "$SRC/update.sh" "$DATA/codex-monitor/update.sh"
+# Bundled sensor plugins (plugins/README.md); the user's own live in $CONF/plugins.
+rm -rf "$DATA/codex-monitor/plugins"
+mkdir -p "$DATA/codex-monitor/plugins" "$CONF/plugins"
+install -m755 "$SRC"/plugins/*.py "$DATA/codex-monitor/plugins/"
 # Release tag for the update check: set by update.sh, or taken from a git checkout.
 VERSION="${CODEX_MONITOR_VERSION:-$(git -C "$SRC" describe --tags 2>/dev/null || echo unknown)}"
 echo "$VERSION" > "$DATA/codex-monitor/VERSION"

@@ -113,9 +113,14 @@ USB link report pump speed, fans and **liquid temperature**:
 
 - with a kernel driver (NZXT Kraken, Corsair Commander Pro, Aquacomputer, …) they appear in
   Fans and More temperatures directly, labelled by the driver ("Pump speed", "Coolant temp");
-- others (many Corsair iCUE, Lian Li, newer NZXT) through [liquidctl](https://github.com/liquidctl/liquidctl):
-  install it (`sudo apt install liquidctl`) and they appear as `liquidctl-<model>`; some need
+- others (many Corsair iCUE, Lian Li, newer NZXT) through the bundled
+  [liquidctl](https://github.com/liquidctl/liquidctl) plugin: install liquidctl
+  (`sudo apt install liquidctl`) and they appear as `liquidctl-<model>`; some need
   `liquidctl initialize all` once after boot.
+
+**USB fan hubs and other devices** are added by **sensor plugins**: a small program that
+prints what it measures as JSON. Drop it into `~/.config/codex-monitor/plugins/` and its
+fans and temperatures appear in Settings → Hardware. See [plugins/README.md](plugins/README.md).
 
 Liquid temperatures default to amber at 40 °C and red at 50 °C (chips: 70 / 85 °C); every
 extra temperature has its own thresholds. Fan bars are scaled per fan, so a pump at 2800 RPM
@@ -129,6 +134,7 @@ edited through the settings window.
 | Key | Meaning |
 | --- | --- |
 | `fans.list` | fans to show, in order: `[{"id": "nct6798/fan2", "name": "Front intake", "warn": true}]` (set in the settings window) |
+| `plugins.disabled` | sensor plugins switched off by name ([plugins/README.md](plugins/README.md)) |
 | `temps.list` | extra temperatures after CPU and GPU: `[{"id": "kraken3/temp1", "name": "Liquid", "warm": 40, "hot": 50}]` |
 | `fans.chip`, `fans.cpu` / `case` / `psu` | used while there is no `fans.list`: chip (`auto` or a name prefix) and its CPU / case / PSU channels |
 | `gpu.device` | `auto`, `none` or an id from `inventory.json` (`nvidia:0`, `drm:card1`) |

@@ -9,6 +9,7 @@
 - Linux: the example config no longer contains the author's drives and fan channels.
 - Linux: any number of fans from any sensor chip, each with its own name, order and "warn when it stops" switch, edited in Settings → Hardware → Fans with live RPM (add, rename, reorder, remove). A graphics card in its 0 RPM mode shows "idle" and only raises FANS LOW when the card is hot. Older configs (`fans.chip` with cpu/case/psu channels) keep working.
 - Linux: water cooling. Extra temperatures (liquid, board, drives) can be added to the widget with their own amber/red thresholds (liquid defaults to 40/50 °C). AIO coolers with a kernel driver (NZXT Kraken, Corsair Commander, Aquacomputer) show their pump, fans and coolant temperature with driver labels; others work through liquidctl when it is installed. Fan bars scale per fan, so pumps do not peg the bar.
+- Linux: sensor plugins for hardware the bridge does not know (USB fan hubs, coolers without a kernel driver): any executable in `~/.config/codex-monitor/plugins/` that prints sensor chips as JSON; its fans and temperatures join the lists in the settings, which also show each plugin's status and switch it on or off. liquidctl support moved into the first bundled plugin. Format documented in `linux/plugins/README.md`, shared with a future Windows implementation.
 
 ## 2026-10-01
 

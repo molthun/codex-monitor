@@ -46,6 +46,8 @@ DEFAULT_CONFIG = {
         "splitFile": "/run/codex-monitor/netsplit.json",
         # Extra temperatures (liquid, board, drives): [{"id": "nzxtkraken3/temp1", "name": "Liquid", "warm": 40, "hot": 50}].
     "temps": {"list": []},
+    # Sensor plugins (plugins/README.md) switched off by name.
+    "plugins": {"disabled": []},
     # How many applications the bridge reports; the widget shows up to widget.topProcesses of them.
         "topProcesses": 5,
     },
@@ -118,51 +120,90 @@ def cpu_temp():
 GPU_HWMON = {"amdgpu", "radeon", "nouveau", "i915", "xe"}
 
 
-class Liquidctl:
-    """AIO water coolers without a kernel driver (many Corsair, Lian Li, newer NZXT), through
-    liquidctl when it is installed. Each device becomes a chip with its pump/fan speeds and
-    liquid temperature. Some devices need "liquidctl initialize all" once after boot."""
+class Plugins:
+    """Extra sensor sources for hardware the bridge does not know: USB fan hubs, AIO coolers
+    without a kernel driver, vendor tools. A plugin is any executable that prints sensor chips
+    as JSON (see plugins/README.md); its fans and temperatures join the board's in the settings.
 
-    def __init__(self):
-        self.chips = []
-        if shutil.which("liquidctl"):
-            threading.Thread(target=self._run, daemon=True).start()
+    Bundled plugins come with the bridge (plugins/ next to it); the user's own go to
+    ~/.config/codex-monitor/plugins/ and override a bundled one with the same name.
+    """
+    TIMEOUT = 15
+
+    def __init__(self, disabled=()):
+        # Installed: plugins/ next to the bridge; in the repository: linux/plugins.
+        bundled = next((d for d in (os.path.join(HERE, "plugins"), os.path.join(HERE, "..", "plugins"))
+                        if os.path.isdir(d)), os.path.join(HERE, "plugins"))
+        self.dirs = [("bundled", bundled), ("user", os.path.join(CONFIG_DIR, "plugins"))]
+        self.disabled = set(disabled)
+        self.state = {}
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def discover(self):
+        found = {}
+        for source, directory in self.dirs:
+            for entry in sorted(os.listdir(directory)) if os.path.isdir(directory) else []:
+                path = os.path.join(directory, entry)
+                if entry.startswith(".") or not os.path.isfile(path) or not os.access(path, os.X_OK):
+                    continue
+                found[os.path.splitext(entry)[0]] = (source, path)
+        return found
 
     def _run(self):
+        due = {}
         while True:
-            try:
-                out = subprocess.run(["liquidctl", "status", "--json"], capture_output=True, text=True,
-                                     timeout=15).stdout
-                self.chips = self.parse(json.loads(out or "[]"))
-            except (OSError, ValueError, subprocess.TimeoutExpired):
-                self.chips = []
-            time.sleep(3)
+            plugins = self.discover()
+            for name in list(self.state):
+                if name not in plugins:
+                    del self.state[name]
+            for name, (source, path) in plugins.items():
+                if name in self.disabled:
+                    self.state[name] = {"source": source, "enabled": False, "chips": [], "ok": True}
+                elif time.monotonic() >= due.get(name, 0):
+                    self.state[name], interval = self.run_one(source, path)
+                    due[name] = time.monotonic() + interval
+            time.sleep(1)
+
+    @classmethod
+    def run_one(cls, source, path):
+        """Runs one plugin: (state, seconds until the next run)."""
+        state = {"source": source, "enabled": True, "chips": [], "ok": False, "error": None}
+        try:
+            proc = subprocess.run([path], capture_output=True, text=True, timeout=cls.TIMEOUT)
+            # No output means nothing to report (e.g. the device or its tool is not installed).
+            data = json.loads(proc.stdout) if proc.stdout.strip() else {"chips": []}
+            chips = data.get("chips", []) if isinstance(data, dict) else data
+            state["chips"] = [cls.clean(c) for c in chips if isinstance(c, dict) and c.get("name")]
+            state["ok"] = proc.returncode == 0
+            if proc.returncode != 0:
+                state["error"] = (proc.stderr.strip().splitlines() or [f"exit code {proc.returncode}"])[-1]
+            interval = data.get("interval", 3) if isinstance(data, dict) else 3
+        except subprocess.TimeoutExpired:
+            state["error"], interval = f"no answer within {cls.TIMEOUT} s", 30
+        except (OSError, ValueError, TypeError, AttributeError) as e:
+            state["error"], interval = str(e), 30
+        return state, max(float(interval), 1)
 
     @staticmethod
-    def parse(devices):
-        chips = []
-        for device in devices:
-            fans, temps, labels = {}, {}, {}
-            for item in device.get("status", []):
-                unit, key, value = str(item.get("unit", "")).lower(), item.get("key", ""), item.get("value")
-                if not isinstance(value, (int, float)):
-                    continue
-                if unit == "rpm":
-                    channel = f"fan{len(fans) + 1}"
-                    fans[channel] = round(value)
-                elif unit in ("°c", "c"):
-                    channel = f"temp{len(temps) + 1}"
-                    temps[channel] = float(value)
-                else:
-                    continue
-                labels[channel] = key
-            if fans or temps:
-                name = re.sub(r"[^a-z0-9]+", "-", device.get("description", "device").lower()).strip("-")
-                chips.append({"name": f"liquidctl-{name}", "fans": fans, "temps": temps, "labels": labels})
-        return chips
+    def clean(chip):
+        """Keeps only well-formed numbers, so a sloppy plugin cannot break the widget."""
+        def numbers(values, kind):
+            return {str(k): kind(v) for k, v in (values or {}).items()
+                    if isinstance(v, (int, float)) and not isinstance(v, bool)}
+        return {"name": str(chip["name"]), "fans": numbers(chip.get("fans"), round),
+                "temps": numbers(chip.get("temps"), float),
+                "labels": {str(k): str(v) for k, v in (chip.get("labels") or {}).items()}}
+
+    @property
+    def chips(self):
+        return [chip for state in list(self.state.values()) for chip in state["chips"]]
+
+    def status(self):
+        return [{"name": name, **{k: v for k, v in state.items() if k != "chips"},
+                 "devices": [c["name"] for c in state["chips"]]} for name, state in sorted(self.state.items())]
 
 
-LIQUIDCTL = None
+PLUGINS = None
 
 
 def sensor_chips():
@@ -170,7 +211,7 @@ def sensor_chips():
     [{"name", "fans": {"fan1": rpm}, "temps": {"temp1": °C}, "labels": {"fan1": "Pump speed"}}].
 
     Names are hwmon names, numbered when two chips share one ("nct6798#2"); liquidctl
-    devices are added as "liquidctl-<model>".
+    plugins add their own chips (e.g. "liquidctl-<model>").
     """
     chips, seen = [], {}
     for name, path in hwmon_chips():
@@ -186,7 +227,7 @@ def sensor_chips():
         seen[name] = seen.get(name, 0) + 1
         chips.append({"name": name if seen[name] == 1 else f"{name}#{seen[name]}", "fans": fans, "temps": temps,
                       "labels": {k: v for k, v in labels.items() if v}})
-    return chips + (LIQUIDCTL.chips if LIQUIDCTL else [])
+    return chips + (PLUGINS.chips if PLUGINS else [])
 
 
 def fan_chips():
@@ -1029,6 +1070,7 @@ def inventory(gpus, net_data, fan_cfg):
         # The fans shown now, so the settings window can start from them.
         "fanList": fan_list(fan_cfg),
         "mounts": mount_inventory(),
+        "plugins": PLUGINS.status() if PLUGINS else [],
         "linkMbps": net_data.get("NetLinkMbps"),
         "Timestamp": time.time(),
     }
@@ -1078,8 +1120,8 @@ def main():
 
     fan_cfg = cfg["fans"]
     temp_cfg = cfg.get("temps", {})
-    global LIQUIDCTL
-    LIQUIDCTL = Liquidctl()
+    global PLUGINS
+    PLUGINS = Plugins(cfg.get("plugins", {}).get("disabled", []))
     while True:
         # Settings changed (settings window or by hand): restart cleanly with the new config.
         if not once and config_stamp() != started_with:
