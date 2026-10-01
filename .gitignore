@@ -1,44 +1,9 @@
-# Runtime data
-CodexBridge.error.log
-*.log
-@Resources/temps.txt
-@Resources/UpdateTemps.ps1
-
-# Backups and archives
-Backups/
-*.zip
-*.bak
-*.bak-*
-Presets/*.small.ini
-
-# .NET build output
-CodexBridge/CodexBridge.exe
-CodexBridge/bin/
-CodexBridge/obj/
-Deploy/Payload/CodexBridge/bin/
-Deploy/Payload/CodexBridge/obj/
-
-# Precompiled bridge binary is distributed via GitHub Releases, not committed.
-Deploy/Payload/CodexBridge/CodexBridge.exe
-
-# Obsolete prototype collector
-CodexCollector.*
-
-# Local/editor noise
+# Platform-specific ignores live in windows/.gitignore.
+__pycache__/
+*.pyc
 .vs/
 .vscode/
-.aider*
-*.user
-*.suo
+.idea/
+*.swp
+.DS_Store
 Thumbs.db
-Desktop.ini
-
-# Rainmeter/user-specific config
-config.json
-Rainmeter.ini
-LOCAL_SETUP.md
-docs/LOCAL_SETUP.md
-*.local.md
-*.local.json
-*.local.ps1
-.local_version

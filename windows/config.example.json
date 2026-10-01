@@ -40,8 +40,8 @@
     "E:"
   ],
   "network": {
-    "internetDownMbps": 500,
-    "internetUpMbps": 500,
+    "internetDownMbps": 0,
+    "internetUpMbps": 0,
     "lanMbps": 0,
     "ignoreAdaptersContaining": [
       "hyper-v",

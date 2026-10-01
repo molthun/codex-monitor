@@ -22,6 +22,9 @@ namespace CodexBridge
         private FlowLayoutPanel _pnlDrives = null!;
         private FlowLayoutPanel _pnlNetworkAdapters = null!;
         private TextBox _txtNetworkExclusions = null!;
+        private NumericUpDown _numPlanDown = null!;
+        private NumericUpDown _numPlanUp = null!;
+        private NumericUpDown _numLanMbps = null!;
         private ComboBox _cmbUpdateMode = null!;
         private ComboBox _cmbUpdateRate = null!;
         private Label _lblApplyStatus = null!;
@@ -72,7 +75,7 @@ namespace CodexBridge
         private void InitializeComponent()
         {
             Text = "CodexMonitor Settings";
-            ClientSize = new Size(760, 840);
+            ClientSize = new Size(760, 880);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -116,7 +119,7 @@ namespace CodexBridge
             var body = new Panel
             {
                 Location = new Point(0, 96),
-                Size = new Size(760, 680),
+                Size = new Size(760, 720),
                 BackColor = Back
             };
             Controls.Add(body);
@@ -144,7 +147,7 @@ namespace CodexBridge
             drives.Controls.Add(_pnlDrives);
             body.Controls.Add(drives);
 
-            var network = CreateCard(28, 300, 704, 280, "Network display", "Only real network adapters are shown here. Windows virtual/filter adapters are ignored automatically.");
+            var network = CreateCard(28, 300, 704, 320, "Network display", "Only real network adapters are shown here. Windows virtual/filter adapters are ignored automatically.");
             _pnlNetworkAdapters = new FlowLayoutPanel
             {
                 Location = new Point(18, 60),
@@ -174,9 +177,20 @@ namespace CodexBridge
             network.Controls.Add(_pnlNetworkAdapters);
             network.Controls.Add(advancedNetworkLabel);
             network.Controls.Add(_txtNetworkExclusions);
+
+            // Internet plan and LAN speed differ per user: they scale the bars and mark the plan.
+            _numPlanDown = CreateSpeedInput(150, 276);
+            _numPlanUp = CreateSpeedInput(330, 276);
+            _numLanMbps = CreateSpeedInput(604, 276);
+            network.Controls.Add(CreateFieldLabel("Internet plan ↓ Mbps", 18, 280, 130));
+            network.Controls.Add(_numPlanDown);
+            network.Controls.Add(CreateFieldLabel("↑ Mbps", 250, 280, 76));
+            network.Controls.Add(_numPlanUp);
+            network.Controls.Add(CreateFieldLabel("LAN Mbps (0 = auto)", 446, 280, 154));
+            network.Controls.Add(_numLanMbps);
             body.Controls.Add(network);
 
-            var update = CreateCard(28, 594, 704, 84, "Updates and sensor refresh", "New releases from GitHub: a notification with an Update button, a silent install, or nothing. Sensor refresh controls how often telemetry is written.");
+            var update = CreateCard(28, 634, 704, 84, "Updates and sensor refresh", "New releases from GitHub: a notification with an Update button, a silent install, or nothing. Sensor refresh controls how often telemetry is written.");
             // Index order matches display.autoUpdate: "notify", true, false.
             _cmbUpdateMode = new ComboBox
             {
@@ -214,7 +228,7 @@ namespace CodexBridge
 
             var footer = new Panel
             {
-                Location = new Point(0, 776),
+                Location = new Point(0, 816),
                 Size = new Size(760, 64),
                 BackColor = Color.FromArgb(12, 16, 21)
             };
@@ -263,6 +277,31 @@ namespace CodexBridge
             footer.Controls.Add(_btnSave);
             footer.Controls.Add(_btnCancel);
             Controls.Add(footer);
+        }
+
+        private static NumericUpDown CreateSpeedInput(int x, int y)
+        {
+            return new NumericUpDown
+            {
+                Location = new Point(x, y),
+                Size = new Size(82, 25),
+                Minimum = 0,
+                Maximum = 100000,
+                BackColor = Color.FromArgb(38, 44, 50),
+                ForeColor = TextMain,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+        }
+
+        private static Label CreateFieldLabel(string text, int x, int y, int width)
+        {
+            return new Label
+            {
+                Text = text,
+                Location = new Point(x, y),
+                Size = new Size(width, 22),
+                ForeColor = TextMain
+            };
         }
 
         private Panel CreateCard(int x, int y, int width, int height, string title, string description)
@@ -388,6 +427,9 @@ namespace CodexBridge
                 if (rootElement.TryGetProperty("network", out var roleNetwork) && roleNetwork.ValueKind == JsonValueKind.Object)
                 {
                     ApplyNetworkRoles(roleNetwork);
+                    SetSpeed(_numPlanDown, roleNetwork, "internetDownMbps");
+                    SetSpeed(_numPlanUp, roleNetwork, "internetUpMbps");
+                    SetSpeed(_numLanMbps, roleNetwork, "lanMbps");
                 }
 
                 if (rootElement.TryGetProperty("bridge", out var bridge) && bridge.ValueKind == JsonValueKind.Object &&
@@ -496,6 +538,9 @@ namespace CodexBridge
                 networkDict["ethernetNamesContaining"] = ethernetNames;
                 networkDict["wifiNamesContaining"] = wifiNames;
                 networkDict["wifiApNamesContaining"] = wifiApNames;
+                networkDict["internetDownMbps"] = (int)_numPlanDown.Value;
+                networkDict["internetUpMbps"] = (int)_numPlanUp.Value;
+                networkDict["lanMbps"] = (int)_numLanMbps.Value;
                 configDict["network"] = networkDict;
 
                 var displayDict = ReadObject(configDict, "display");
@@ -526,6 +571,14 @@ namespace CodexBridge
                 _btnSave.Enabled = true;
                 _lblApplyStatus.Text = "Save failed. No further changes were applied.";
                 MessageBox.Show($"Failed to save settings: {ex.Message}", "CodexMonitor Settings", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private static void SetSpeed(NumericUpDown input, JsonElement network, string key)
+        {
+            if (network.TryGetProperty(key, out var value) && value.TryGetDouble(out var mbps))
+            {
+                input.Value = Math.Clamp((decimal)mbps, input.Minimum, input.Maximum);
             }
         }
 

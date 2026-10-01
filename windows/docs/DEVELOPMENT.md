@@ -175,7 +175,7 @@ After GitHub is live, local zip artifacts are optional. The normal developer flo
 ```powershell
 cd C:\CodexMonitor
 git status --short
-git add README.md CHANGELOG.md docs CodexBridge Deploy Presets Watch-PrimaryDisplay.ps1 CodexMonitor.ini
+git add windows README.md CHANGELOG.md
 git commit -m "Describe the change"
 git push
 ```

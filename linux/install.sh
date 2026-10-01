@@ -24,6 +24,32 @@ else
     echo "==> Keeping existing $CONF/config.json"
 fi
 
+# Internet plan speeds differ per user: ask once (also works under "curl | bash").
+plan_down="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("widget", {}).get("internetDownMbps", 0) or 0)' "$CONF/config.json" 2>/dev/null || echo 0)"
+if [[ "$plan_down" == "0" ]] && { true </dev/tty; } 2>/dev/null; then
+    # Virtual interfaces have no speed file; that must not stop the installer (set -e).
+    link="$(cat /sys/class/net/*/speed 2>/dev/null | sort -n | tail -1 || true)"
+    echo
+    echo "Your Internet plan speed marks the bars and highlights when it is maxed out."
+    echo "LAN speed is detected from the network card${link:+ (now: ${link} Mbps)}."
+    read -r -p "Internet download speed in Mbps (Enter to skip): " down </dev/tty || down=""
+    read -r -p "Internet upload speed in Mbps (Enter = same as download): " up </dev/tty || up=""
+    if [[ "$down" =~ ^[0-9]+$ ]]; then
+        [[ "$up" =~ ^[0-9]+$ ]] || up="$down"
+        python3 - "$CONF/config.json" "$down" "$up" <<'PY'
+import json, sys
+path, down, up = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+with open(path) as f:
+    config = json.load(f)
+config.setdefault("widget", {}).update({"internetDownMbps": down, "internetUpMbps": up})
+with open(path, "w") as f:
+    json.dump(config, f, indent=2, ensure_ascii=False)
+    f.write("\n")
+PY
+        echo "==> Internet plan: ${down}/${up} Mbps (change it in $CONF/config.json)"
+    fi
+fi
+
 echo "==> systemd user service"
 install -Dm644 "$SRC/systemd/codex-monitor-bridge.service" "$UNIT_DIR/codex-monitor-bridge.service"
 systemctl --user daemon-reload

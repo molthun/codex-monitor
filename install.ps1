@@ -1,5 +1,12 @@
-# CodexMonitor GitHub Bootstrap Launcher
-# This script downloads the public GitHub source ZIP and runs the main setup.
+# CodexMonitor installer for Windows.
+#
+#   From GitHub (elevated PowerShell):
+#     Set-ExecutionPolicy Bypass -Scope Process -Force; irm https://raw.githubusercontent.com/molthun/codex-monitor/main/install.ps1 | iex
+#   From a clone:
+#     .\install.ps1
+#
+# Copies the windows folder to C:\CodexMonitor (downloading it first when run from GitHub)
+# and hands off to windows\Deploy\Setup-CodexMonitor.ps1. Linux: install.sh.
 
 $ErrorActionPreference = "Stop"
 
@@ -8,6 +15,11 @@ $myWindowsID = [System.Security.Principal.WindowsIdentity]::GetCurrent()
 $myWindowsPrincipal = New-Object System.Security.Principal.WindowsPrincipal($myWindowsID)
 $adminRole = [System.Security.Principal.WindowsBuiltInRole]::Administrator
 if (-not $myWindowsPrincipal.IsInRole($adminRole)) {
+    if (-not $PSCommandPath) {
+        # Piped through iex: there is no script file to relaunch elevated.
+        Write-Error "Run this command in PowerShell opened as Administrator."
+        exit 1
+    }
     Write-Host "Elevating setup bootstrap to Administrator privilege..." -ForegroundColor Yellow
     $newArguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
     Start-Process -FilePath "powershell.exe" -ArgumentList $newArguments -Verb RunAs
@@ -46,14 +58,18 @@ if (Test-Path -LiteralPath $installDir) {
     Rename-Item -Path $installDir -NewName (Split-Path $backupDir -Leaf)
 }
 
-Write-Host "Downloading CodexMonitor repository from $zipUrl..." -ForegroundColor Yellow
-Invoke-WebRequest -Uri $zipUrl -OutFile $tempZip -UseBasicParsing
+$localWindows = if ($PSScriptRoot) { Join-Path $PSScriptRoot "windows" } else { "" }
+if ($localWindows -and (Test-Path -LiteralPath (Join-Path $localWindows "Deploy"))) {
+    Write-Host "Installing from the local checkout $PSScriptRoot..." -ForegroundColor Yellow
+    $windowsDir = $localWindows
+}
+else {
+    Write-Host "Downloading CodexMonitor repository from $zipUrl..." -ForegroundColor Yellow
+    Invoke-WebRequest -Uri $zipUrl -OutFile $tempZip -UseBasicParsing
 
-Write-Host "Extracting repository source archive..." -ForegroundColor Yellow
-Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
+    Write-Host "Extracting repository source archive..." -ForegroundColor Yellow
+    Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
 
-$extractedDir = Join-Path $tempExtract "codex-monitor-main"
-if (-not (Test-Path -LiteralPath $extractedDir)) {
     $extractedDir = Get-ChildItem -Path $tempExtract -Directory | Select-Object -First 1
     if (-not $extractedDir) {
         Write-Error "Failed to locate extracted files."
@@ -61,11 +77,11 @@ if (-not (Test-Path -LiteralPath $extractedDir)) {
         [void][System.Console]::ReadKey()
         exit 1
     }
-    $extractedDir = $extractedDir.FullName
+    $windowsDir = Join-Path $extractedDir.FullName "windows"
 }
 
 New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-Copy-Item -LiteralPath "$extractedDir\*" -Destination $installDir -Recurse -Force
+Copy-Item -Path "$windowsDir\*" -Destination $installDir -Recurse -Force
 
 # Record the latest release tag as the version baseline for the auto-updater.
 try {
@@ -81,8 +97,8 @@ try {
 }
 
 # Clean up temp files
-Remove-Item -LiteralPath $tempZip -Force
-Remove-Item -LiteralPath $tempExtract -Recurse -Force
+if (Test-Path -LiteralPath $tempZip) { Remove-Item -LiteralPath $tempZip -Force }
+if (Test-Path -LiteralPath $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force }
 
 Write-Host "Repository downloaded and staged at $installDir!" -ForegroundColor Green
 
