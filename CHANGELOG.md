@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-02
+
+- Linux: top bar icon (GNOME's tray) with Settings, Check for updates, Restart widget and a Show widget switch.
+- Linux: settings window (Extensions → CodexMonitor): widget size (automatic, 1080p/2K/4K or a custom percentage), fit to screen, position, which sections to show; graphics card, fan chip and channels with live RPM, up to 6 drives with names; Internet plan, LAN scale, top-process rows; update mode with Check now / Install. Changes apply immediately (the bridge restarts itself when the config changes).
+- Linux: updates apply without logging out. The extension is now a small loader that imports the widget from a versioned folder and restarts it when an update lands; only a change of the loader needs one new login, and the update notification says so.
+- Linux: AMD graphics (load, temperature, VRAM, fan via `amdgpu`) and Intel discrete graphics (temperature); "auto" picks NVIDIA, then the AMD card with the most VRAM, then Intel. Board fans: the "auto" chip is the one with the most fans (ITE `it87` boards work without configuration). Up to 6 drives. The bridge writes `inventory.json` (GPUs, fan chips, drives, link speed) for the settings window.
+- Linux: the example config no longer contains the author's drives and fan channels.
+
 ## 2026-10-01
 
 - Linux: "Top processes" shows application names and icons from `.desktop` files instead of raw process names (`Yandex Browser` instead of `yandex_browser`), groups an app's processes into one row, names helpers by their host app (`claude · Visual Studio Code`) and system services by their systemd description.

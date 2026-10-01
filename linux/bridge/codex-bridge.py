@@ -27,19 +27,27 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 RUNTIME_DIR = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
 DEFAULT_OUTPUT = os.path.join(RUNTIME_DIR, "codex-monitor", "sensors.json")
 HERE = os.path.dirname(os.path.abspath(__file__))
+# Tests point this at a fake tree to exercise AMD/Intel GPUs and other boards.
+SYS = os.environ.get("CODEX_MONITOR_SYSFS", "/sys")
+MAX_DISKS = 6
 
 DEFAULT_CONFIG = {
     "bridge": {"updateSeconds": 1, "outputFile": ""},
-    "fans": {"chip": "nct", "cpu": "fan1", "case": "fan2", "psu": "fan7"},
+    # chip "auto" = the board chip with the most fans; channels "" = not connected.
+    "fans": {"chip": "auto", "cpu": "fan1", "case": "fan2", "psu": ""},
+    # device "auto" = NVIDIA, else the AMD card with the most VRAM, else Intel; or an id from inventory.json.
+    "gpu": {"device": "auto"},
     "disks": ["/"],
     "network": {
         "ignoreAdaptersContaining": ["lo", "docker", "veth", "br-", "virbr", "vnet", "tun", "tap", "wg", "tailscale", "zt"],
         "wifiPrefixes": ["wl"],
         "ethernetPrefixes": ["en", "eth"],
         "splitFile": "/run/codex-monitor/netsplit.json",
-        "topProcesses": 3,
+        # How many applications the bridge reports; the widget shows up to widget.topProcesses of them.
+        "topProcesses": 5,
     },
-    "update": {"check": True, "intervalHours": 6},
+    # mode: "notify" (notification with an Update button), "auto" (install right away) or "off".
+    "update": {"mode": "notify", "intervalHours": 6},
 }
 
 
@@ -79,7 +87,7 @@ def read_int(path):
 # ---------------------------------------------------------------- hwmon
 
 def hwmon_chips():
-    base = "/sys/class/hwmon"
+    base = f"{SYS}/class/hwmon"
     chips = []
     for entry in sorted(os.listdir(base)) if os.path.isdir(base) else []:
         path = os.path.join(base, entry)
@@ -103,17 +111,29 @@ def cpu_temp():
     return None
 
 
-def board_fans(chip_prefix):
-    """Returns {"fan1": rpm, ...} from the first SuperIO chip matching prefix."""
+# hwmon chips that belong to graphics cards, not to the board.
+GPU_HWMON = {"amdgpu", "radeon", "nouveau", "i915", "xe"}
+
+
+def fan_chips():
+    """[(chip name, {"fan1": rpm, ...})] for every board chip that reports fans."""
+    chips = []
     for name, path in hwmon_chips():
-        if name.startswith(chip_prefix):
-            fans = {}
-            for i in range(1, 8):
-                rpm = read_int(f"{path}/fan{i}_input")
-                if rpm is not None:
-                    fans[f"fan{i}"] = rpm
-            return fans
-    return {}
+        if name in GPU_HWMON:
+            continue
+        fans = {f"fan{i}": read_int(f"{path}/fan{i}_input") for i in range(1, 10)}
+        fans = {k: v for k, v in fans.items() if v is not None}
+        if fans:
+            chips.append((name, fans))
+    return chips
+
+
+def board_fans(chip):
+    """Fans of the configured chip (name prefix), or of the chip with the most fans for "auto"."""
+    chips = fan_chips()
+    if chip and chip != "auto":
+        chips = [c for c in chips if c[0].startswith(chip)]
+    return max(chips, key=lambda c: len(c[1]))[1] if chips else {}
 
 
 def dump_sensors():
@@ -125,15 +145,17 @@ def dump_sensors():
                 print(f"  {fname:<16} {read(os.path.join(path, fname)):>10}  {label}")
 
 
-# ---------------------------------------------------------------- nvidia
+# ---------------------------------------------------------------- gpu
 
 class NvidiaReader:
     """Keeps one nvidia-smi process streaming CSV instead of spawning per tick."""
     FIELDS = "temperature.gpu,utilization.gpu,memory.used,memory.total,fan.speed"
+    source = "NvidiaSmi"
 
-    def __init__(self, interval_ms):
+    def __init__(self, interval_ms, index=0):
         self.latest = None
         self.interval_ms = interval_ms
+        self.index = index
         if shutil.which("nvidia-smi"):
             threading.Thread(target=self._run, daemon=True).start()
 
@@ -142,7 +164,7 @@ class NvidiaReader:
             try:
                 proc = subprocess.Popen(
                     ["nvidia-smi", f"--query-gpu={self.FIELDS}", "--format=csv,noheader,nounits",
-                     f"-lms={self.interval_ms}", "-i", "0"],
+                     f"-lms={self.interval_ms}", "-i", str(self.index)],
                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
                 for line in proc.stdout:
                     self.latest = [self._num(v) for v in line.split(",")]
@@ -170,6 +192,122 @@ class NvidiaReader:
             "VRAMPct": used / total * 100 if used is not None and total else None,
             "GPUFanPct": fan,
         }
+
+
+class SysfsGpu:
+    """AMD (amdgpu) and Intel (i915/xe) cards: whatever their driver exposes in sysfs.
+
+    amdgpu gives load, VRAM, temperature and fan; Intel drivers give a temperature on
+    discrete cards only, so integrated Intel graphics show mostly "n/a".
+    """
+
+    def __init__(self, card):
+        self.card = card
+        self.source = card["driver"]
+        hwmons = sorted(os.listdir(f"{card['path']}/hwmon")) if os.path.isdir(f"{card['path']}/hwmon") else []
+        self.hwmon = f"{card['path']}/hwmon/{hwmons[0]}" if hwmons else None
+
+    def _temp(self):
+        if not self.hwmon:
+            return None
+        inputs = sorted(f for f in os.listdir(self.hwmon) if re.fullmatch(r"temp\d+_input", f))
+        # Prefer the overall reading: "edge" on amdgpu, "pkg" on Intel discrete cards.
+        for wanted in ("edge", "pkg"):
+            for f in inputs:
+                if read(f"{self.hwmon}/{f[:-6]}_label", "") == wanted:
+                    return read_int(f"{self.hwmon}/{f}") / 1000
+        value = read_int(f"{self.hwmon}/{inputs[0]}") if inputs else None
+        return value / 1000 if value is not None else None
+
+    def snapshot(self):
+        dev = self.card["path"]
+        used, total = read_int(f"{dev}/mem_info_vram_used"), read_int(f"{dev}/mem_info_vram_total")
+        fan = None
+        if self.hwmon:
+            pwm, pwm_max = read_int(f"{self.hwmon}/pwm1"), read_int(f"{self.hwmon}/pwm1_max") or 255
+            fan = pwm * 100 / pwm_max if pwm is not None else None
+        data = {"GPUCore": self._temp(), "GPULoad": read_int(f"{dev}/gpu_busy_percent"), "GPUFanPct": fan}
+        if used is not None and total:
+            data.update(VRAMUsedMB=used / 1048576, VRAMTotalMB=total / 1048576, VRAMPct=used / total * 100)
+        return data
+
+
+class NoGpu:
+    source = "none"
+
+    @staticmethod
+    def snapshot():
+        return {}
+
+
+PCI_VENDORS = {"0x1002": "AMD", "0x8086": "Intel", "0x10de": "NVIDIA"}
+
+
+def drm_cards():
+    """Graphics cards known to the kernel: [{"id": "card1", "driver", "vendor", "slot", "path"}]."""
+    base = f"{SYS}/class/drm"
+    cards = []
+    for entry in sorted(os.listdir(base)) if os.path.isdir(base) else []:
+        dev = f"{base}/{entry}/device"
+        if not re.fullmatch(r"card\d+", entry) or not os.path.isdir(dev):
+            continue
+        cards.append({
+            "id": entry,
+            "driver": os.path.basename(os.path.realpath(f"{dev}/driver")) if os.path.exists(f"{dev}/driver") else "",
+            "vendor": PCI_VENDORS.get(read(f"{dev}/vendor"), "GPU"),
+            "slot": os.path.basename(os.path.realpath(dev)),
+            "path": dev,
+        })
+    return cards
+
+
+def pci_name(card):
+    """"AMD Radeon RX 7800 XT"-style name from lspci, else vendor + card id."""
+    if shutil.which("lspci"):
+        out = subprocess.run(["lspci", "-mm", "-s", card["slot"]], capture_output=True, text=True).stdout
+        fields = re.findall(r'"([^"]*)"', out)
+        if len(fields) >= 3:
+            model = re.search(r"\[([^\]]+)\]\s*$", fields[2])
+            return f"{card['vendor']} {model.group(1) if model else fields[2]}"
+    return f"{card['vendor']} GPU ({card['id']})"
+
+
+def nvidia_names():
+    if not shutil.which("nvidia-smi"):
+        return []
+    out = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True).stdout
+    return re.findall(r"^GPU \d+: (.+?) \(UUID", out, re.M)
+
+
+def gpu_inventory():
+    """Every GPU the bridge can read: [{"id", "name", "driver", "reader": callable}]."""
+    gpus = [{"id": f"nvidia:{i}", "name": name, "driver": "nvidia-smi", "index": i}
+            for i, name in enumerate(nvidia_names())]
+    for card in drm_cards():
+        if card["driver"] in ("amdgpu", "i915", "xe"):
+            gpus.append({"id": f"drm:{card['id']}", "name": pci_name(card), "driver": card["driver"], "card": card})
+    return gpus
+
+
+def open_gpu(cfg, interval_ms, inventory):
+    """The configured GPU reader; "auto" prefers NVIDIA, then the AMD card with the most VRAM, then Intel."""
+    choice = cfg.get("device") or "auto"
+    if choice == "none":
+        return NoGpu()
+    if choice == "auto":
+        def rank(gpu):
+            if gpu["driver"] == "nvidia-smi":
+                return (3, 0)
+            if gpu["driver"] == "amdgpu":
+                return (2, read_int(f"{gpu['card']['path']}/mem_info_vram_total") or 0)
+            return (1, 0)
+        candidates = sorted(inventory, key=rank, reverse=True)
+    else:
+        candidates = [g for g in inventory if g["id"] == choice]
+    if not candidates:
+        return NoGpu()
+    gpu = candidates[0]
+    return NvidiaReader(interval_ms, gpu["index"]) if gpu["driver"] == "nvidia-smi" else SysfsGpu(gpu["card"])
 
 
 # ---------------------------------------------------------------- cpu / ram
@@ -673,7 +811,9 @@ class UpdateChecker:
     def __init__(self, cfg):
         self.local = read(os.path.join(HERE, "VERSION"), "unknown")
         self.release = None
-        if cfg.get("check", True):
+        # Older configs only had "check": false.
+        self.mode = "off" if cfg.get("check") is False else cfg.get("mode") or "notify"
+        if self.mode != "off":
             self.interval = max(float(cfg.get("intervalHours") or 6), 1) * 3600
             threading.Thread(target=self._run, daemon=True).start()
 
@@ -695,6 +835,7 @@ class UpdateChecker:
         newer = remote and version_key(remote["tag"]) and (local_key is None or version_key(remote["tag"]) > local_key)
         return {
             "Version": self.local,
+            "UpdateMode": self.mode,
             "UpdateAvailable": remote["tag"] if newer else None,
             "UpdateUrl": remote["url"] if newer else None,
         }
@@ -704,7 +845,7 @@ class UpdateChecker:
 
 class Disks:
     def __init__(self, mounts):
-        self.mounts = mounts[:3]
+        self.mounts = mounts[:MAX_DISKS]
         self.prev = {}
         self.prev_at = None
 
@@ -749,6 +890,46 @@ class Disks:
 
 # ---------------------------------------------------------------- main
 
+REAL_FILESYSTEMS = {"ext2", "ext3", "ext4", "btrfs", "xfs", "f2fs", "vfat", "exfat", "ntfs", "ntfs3",
+                    "fuseblk", "zfs", "bcachefs"}
+
+
+def mount_inventory():
+    """Mounted real filesystems, one per device (its shortest mount point), for the settings window."""
+    by_device = {}
+    for line in (read("/proc/mounts") or "").splitlines():
+        device, mount, fs = line.split()[:3]
+        mount = mount.replace("\\040", " ")
+        if fs not in REAL_FILESYSTEMS or mount.startswith(("/snap/", "/var/snap/")):
+            continue
+        if device not in by_device or len(mount) < len(by_device[device]["mount"]):
+            try:
+                st = os.statvfs(mount)
+                size = st.f_blocks * st.f_frsize
+            except OSError:
+                size = 0
+            by_device[device] = {"mount": mount, "device": device, "fs": fs, "sizeB": size}
+    return sorted(by_device.values(), key=lambda m: m["mount"])
+
+
+def inventory(gpus, net_data):
+    """What this PC has, for the settings window: GPUs, fan chips with live RPM, drives, link speed."""
+    return {
+        "gpus": [{"id": g["id"], "name": g["name"], "driver": g["driver"]} for g in gpus],
+        "fanChips": [{"name": name, "fans": fans} for name, fans in fan_chips()],
+        "mounts": mount_inventory(),
+        "linkMbps": net_data.get("NetLinkMbps"),
+        "Timestamp": time.time(),
+    }
+
+
+def config_stamp():
+    try:
+        return os.stat(CONFIG_PATH).st_mtime_ns
+    except OSError:
+        return None
+
+
 def write_atomic(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
@@ -766,12 +947,16 @@ def main():
     interval = max(float(cfg["bridge"].get("updateSeconds") or 1), 0.5)
     out = os.path.expanduser(cfg["bridge"].get("outputFile") or DEFAULT_OUTPUT)
 
-    nvidia = NvidiaReader(int(interval * 1000))
+    gpus = gpu_inventory()
+    gpu = open_gpu(cfg.get("gpu", {}), int(interval * 1000), gpus)
+    inventory_path = os.path.join(os.path.dirname(out), "inventory.json")
+    inventory_at = 0
+    started_with = config_stamp()
     cpu = CpuLoad()
     net = Network(cfg["network"])
     split = NetSplit(cfg["network"].get("splitFile") or DEFAULT_CONFIG["network"]["splitFile"])
     processes = ProcessTraffic(LanClassifier())
-    top_n = int(cfg["network"].get("topProcesses", 3))
+    top_n = int(cfg["network"].get("topProcesses", 5))
     disks = Disks(cfg["disks"])
     updates = UpdateChecker(cfg.get("update", {}))
     net.sample()
@@ -782,13 +967,16 @@ def main():
 
     fan_cfg = cfg["fans"]
     while True:
-        fans = board_fans(fan_cfg.get("chip") or "nct")
+        # Settings changed (settings window or by hand): restart cleanly with the new config.
+        if not once and config_stamp() != started_with:
+            os.execv(sys.executable, [sys.executable, *sys.argv])
+        fans = board_fans(fan_cfg.get("chip") or "auto")
         net_data = net.sample()
         data = {
             "CPU": cpu_temp(),
             "CPULoad": cpu.value(),
             **memory(),
-            **nvidia.snapshot(),
+            **gpu.snapshot(),
             "CPUFan": fans.get(fan_cfg.get("cpu")),
             **{f"BoardFan{i}": fans.get(f"fan{i}") for i in range(1, 8)},
             "CaseFan": fans.get(fan_cfg.get("case")),
@@ -798,10 +986,13 @@ def main():
             **traffic_split(net_data, split.sample(), *processes.sample(), top_n, processes.icons),
             "Disks": disks.sample(),
             **updates.snapshot(),
-            "BridgeSource": "hwmon+NvidiaSmi" if nvidia.latest else "hwmon",
+            "BridgeSource": f"hwmon+{gpu.source}",
             "Timestamp": time.time(),
         }
         write_atomic(out, data)
+        if time.monotonic() - inventory_at > 5:
+            write_atomic(inventory_path, inventory(gpus, net_data))
+            inventory_at = time.monotonic()
         if once:
             print(json.dumps(data, indent=2))
             return

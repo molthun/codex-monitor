@@ -61,6 +61,19 @@ rm -rf "$DATA/gnome-shell/extensions/$UUID"
 mkdir -p "$DATA/gnome-shell/extensions"
 cp -r "$SRC/extension/$UUID" "$DATA/gnome-shell/extensions/"
 
+# The running extension (a small loader) picks up a new widget from a fresh folder as soon
+# as `current` points at it, so updates apply without logging out. Keep the previous copy.
+WIDGETS="$DATA/codex-monitor/widget"
+STAMP="$(printf '%s' "$VERSION" | tr -c 'A-Za-z0-9._-' '_')-$(date +%s)"
+mkdir -p "$WIDGETS/$STAMP"
+cp "$SRC/extension/$UUID/widget.js" "$SRC/extension/$UUID/settings.js" "$WIDGETS/$STAMP/"
+previous="$(cat "$WIDGETS/current" 2>/dev/null || true)"
+printf '%s\n' "$STAMP" > "$WIDGETS/current"
+for dir in "$WIDGETS"/*/; do
+    name="$(basename "$dir")"
+    [[ "$name" == "$STAMP" || "$name" == "$previous" ]] || rm -rf "$dir"
+done
+
 if gnome-extensions enable "$UUID" 2>/dev/null; then
     echo "==> Extension enabled"
 else
