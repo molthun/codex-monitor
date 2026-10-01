@@ -253,6 +253,11 @@ function Install-Release {
         throw "Failed to locate extracted repository directory in ZIP."
     }
     $extractedRepoDir = $extractedRepoDir.FullName
+    # Releases keep the Windows version in windows\ (Linux lives in linux\); older ones at the root.
+    $windowsDir = Join-Path $extractedRepoDir "windows"
+    if (Test-Path -LiteralPath (Join-Path $windowsDir "Deploy")) {
+        $extractedRepoDir = $windowsDir
+    }
 
     # 2. Download the precompiled bridge exe attached to the release.
     $bridgeAsset = Join-Path $env:TEMP "CodexBridge-$remote.exe"
