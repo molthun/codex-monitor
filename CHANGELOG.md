@@ -25,6 +25,7 @@
 - Windows: the settings no longer show a plain "Ethernet" adapter as Ignore (the ignore word "vethernet" contains its name); saving then used to stop counting its traffic.
 - Windows and Linux: the wireless half of the network legend is hidden while no Wi-Fi is in use; an adapter that is up but has carried no traffic for a minute counts as unused.
 - Windows: the widget only shows what this PC has. No graphics card: no GPU load, VRAM, GPU temperature or GPU fan rows; no CPU temperature sensor: no CPU temperature row; no fans: no Cooling section; the health strip keeps only the cells it can fill and disappears when only RAM is left. The bridge reports the sensors it found and the display watcher rebuilds the skin when that changes (first run, after installing PawnIO). N/A remains for a sensor that drops out while running.
+- Windows: integrated graphics (Intel, small AMD APU carve-outs) get no VRAM row: they share the system RAM, and their few MB of "dedicated" memory read as 0.1 GB / 0.1 GB.
 - Windows: in a virtual machine (Parallels, VMware, Hyper-V, VirtualBox, QEMU) the Sensor access card says that the VM has no temperature or fan sensors instead of suggesting a driver, and the health strip shows FANS N/A when no fan reports at all.
 ## 2026-10-01
 

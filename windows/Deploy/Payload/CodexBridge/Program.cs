@@ -293,8 +293,9 @@ do
             network.EthOutMbps + network.WifiOutMbps + network.WifiApOutMbps,
             linkMbps, apps, appsOk, config.NetPanel, ReadUpdateTag(updateStatusFile));
 
+        // Integrated graphics share the system RAM: their tiny "dedicated" memory is not worth a VRAM row.
         seen = new CodexBridge.Available(seen.CpuTemp || cpuTemp.HasValue, seen.Gpu || gpu is not null,
-            seen.GpuTemp || gpuCore.HasValue, seen.Vram || vramTotalMb > 0, seen.GpuFan || gpuFan.HasValue || gpuFanPct.HasValue);
+            seen.GpuTemp || gpuCore.HasValue, seen.Vram || (vramTotalMb > 0 && gpu is { Integrated: false }), seen.GpuFan || gpuFan.HasValue || gpuFanPct.HasValue);
 
         // Below 0.1 Mbps is background chatter (ARP, mDNS) an idle adapter still receives.
         if (network.WifiActiveInMbps + network.WifiActiveOutMbps >= 0.1)
