@@ -567,6 +567,8 @@ namespace CodexBridge
             {
                 null when _inventory is null => ("The bridge has not reported yet. If this stays, choose Restart in the tray menu.", true),
                 null => ("This bridge version does not report sensor access.", false),
+                _ when status["virtualMachine"]?.GetValue<string>() is { Length: > 0 } vm && !Flag("cpuTemp") =>
+                    ($"This is a virtual machine ({vm}): it has no temperature or fan sensors, so the widget shows them as N/A.", false),
                 _ when status["error"]?.GetValue<string>() is { Length: > 0 } error => ($"LibreHardwareMonitor did not start: {error}", true),
                 _ when !Flag("admin") => ("The bridge runs without administrator rights: no CPU temperatures or board fans. Run Install-CodexMonitor.cmd again.", true),
                 _ when !Flag("pawnIO") => ("The PawnIO driver is not installed: no CPU temperatures or board fans.", true),
@@ -576,7 +578,9 @@ namespace CodexBridge
             _lblSensorStatus.Text = text;
             _lblSensorStatus.ForeColor = warn ? Color.FromArgb(255, 193, 94) : TextMain;
             _tip.SetToolTip(_lblSensorStatus, devices.Count == 0 ? text : text + "\n\n" + string.Join("\n", devices));
-            _btnPawnIo.Visible = status is not null && Flag("admin") && !Flag("pawnIO");
+            // A virtual machine has nothing for PawnIO to read.
+            _btnPawnIo.Visible = status is not null && Flag("admin") && !Flag("pawnIO") &&
+                status["virtualMachine"]?.GetValue<string>() is not { Length: > 0 };
         }
 
         /// <summary>PawnIO from winget (asks for administrator rights), then a bridge restart to load it.</summary>

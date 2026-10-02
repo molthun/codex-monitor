@@ -158,6 +158,32 @@ static class HardwareSensors
     /// administrator rights and the PawnIO driver (LibreHardwareMonitor 0.9.5+ no longer ships WinRing0;
     /// it finds PawnIO by the same Uninstall key).
     /// </summary>
+    /// <summary>
+    /// The virtual machine's name ("Parallels ARM Virtual Machine") when Windows runs in one: VMs have
+    /// no temperature or fan sensors at all. Read once; Win32_ComputerSystem names the hypervisor.
+    /// </summary>
+    static readonly Lazy<string?> VirtualMachine = new(() =>
+    {
+        try
+        {
+            using var searcher = new System.Management.ManagementObjectSearcher("SELECT Manufacturer, Model FROM Win32_ComputerSystem");
+            foreach (var system in searcher.Get())
+            {
+                var name = $"{system["Manufacturer"]} {system["Model"]}".Trim();
+                if (System.Text.RegularExpressions.Regex.IsMatch(name, @"Virtual|VMware|VirtualBox|Parallels|QEMU|KVM|Xen|innotek",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                {
+                    return system["Model"]?.ToString() is { Length: > 0 } model ? model : name;
+                }
+            }
+        }
+        catch
+        {
+            // No WMI: treat as real hardware.
+        }
+        return null;
+    });
+
     public static JsonObject Status(IComputer computer, IReadOnlyList<SimpleSensor> sensors, string? openError)
     {
         bool admin;
@@ -187,6 +213,7 @@ static class HardwareSensors
             ["devices"] = new JsonArray(computer.Hardware.Select(h => (JsonNode)$"{h.HardwareType}: {h.Name}").ToArray()),
             ["cpuTemp"] = sensors.Any(s => s.HardwareType == HardwareType.Cpu && s.Type == SensorType.Temperature && s.Value.HasValue),
             ["boardFans"] = sensors.Any(IsCoolingFan),
+            ["virtualMachine"] = VirtualMachine.Value,
             ["error"] = openError,
         };
     }

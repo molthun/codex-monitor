@@ -21,6 +21,7 @@
 - Windows: a missing sensor shows as N/A / n/a instead of a believable 0 (the bridge writes `-1`, as it already did for fans and extra temperatures): health strip, CPU/GPU/extra temperatures, VRAM and GPU fans. A graphics card without fan sensors no longer raises FANS LOW.
 - Windows: the generated skin is saved as UTF-16 LE, the Unicode encoding Rainmeter reads; UTF-8 showed "°C" as "Â°C" and would garble non-ASCII names.
 - Windows: the wireless half of the network legend is hidden while no Wi-Fi is in use.
+- Windows: in a virtual machine (Parallels, VMware, Hyper-V, VirtualBox, QEMU) the Sensor access card says that the VM has no temperature or fan sensors instead of suggesting a driver, and the health strip shows FANS N/A when no fan reports at all.
 ## 2026-10-01
 
 - Linux: "Top processes" shows application names and icons from `.desktop` files instead of raw process names (`Yandex Browser` instead of `yandex_browser`), groups an app's processes into one row, names helpers by their host app (`claude · Visual Studio Code`) and system services by their systemd description.

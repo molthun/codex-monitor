@@ -583,10 +583,16 @@ sealed class SkinBuilder
         }
         if (_config.ShowSection("health"))
         {
+            // FANS N/A when no fan reports at all (no fan sensors, e.g. a virtual machine): OK would be a guess.
+            var known = string.Join(" || ", Enumerable.Range(1, _fans.Count).Select(n => $"({Measure($"Fan{n}")} >= 0)")
+                .Append($"({Measure("GPUFan")} >= 0) || ({Measure("GPUFanPct")} >= 0)"));
             MeasureSection("StateHealthFans", "Measure=Calc", "Formula=1",
                 $"IfCondition={low}",
                 "IfTrueAction=[!SetOption HealthFans Text \"FANS LOW\"][!SetOption HealthFans FontColor \"#Hot#\"][!SetOption HealthFansBar SolidColor \"#Hot#\"][!SetVariable HealthFill \"255,113,113,34\"]",
-                "IfFalseAction=[!SetOption HealthFans Text \"FANS OK\"][!SetOption HealthFans FontColor \"#OK#\"][!SetOption HealthFansBar SolidColor \"#OK#\"][!SetVariable HealthFill \"78,205,196,6\"]",
+                $"IfCondition2=(({low}) = 0) && ({known})",
+                "IfTrueAction2=[!SetOption HealthFans Text \"FANS OK\"][!SetOption HealthFans FontColor \"#OK#\"][!SetOption HealthFansBar SolidColor \"#OK#\"][!SetVariable HealthFill \"78,205,196,6\"]",
+                $"IfCondition3=(({known}) = 0)",
+                "IfTrueAction3=[!SetOption HealthFans Text \"FANS N/A\"][!SetOption HealthFans FontColor \"#Muted#\"][!SetOption HealthFansBar SolidColor \"#Muted#\"][!SetVariable HealthFill \"78,205,196,6\"]",
                 "DynamicVariables=1");
         }
     }
