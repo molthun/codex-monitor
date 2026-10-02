@@ -15,12 +15,25 @@ static class HardwareSensors
     // Fan sources that are not a graphics card: board chips, AIO coolers, PSUs, fan/RGB controllers.
     static bool IsCoolingFan(SimpleSensor s) => s.Type == SensorType.Fan && !IsGpu(s.HardwareType);
 
-    public sealed record Gpu(string Id, string Name, HardwareType Type);
+    public sealed record Gpu(string Id, string Name, HardwareType Type, double? MemoryMB, bool Integrated);
 
+    /// <summary>
+    /// GPUs with their dedicated memory; integrated ones (Intel without dedicated memory, AMD APUs
+    /// with a small carve-out) are marked so the settings can say so. Names lose "(R)"/"(TM)".
+    /// </summary>
     public static List<Gpu> Gpus(IEnumerable<SimpleSensor> sensors) =>
         sensors.Where(s => IsGpu(s.HardwareType))
             .GroupBy(s => s.HardwareIdentifier)
-            .Select(g => new Gpu(g.Key, g.First().HardwareName, g.First().HardwareType))
+            .Select(g =>
+            {
+                var memory = g.FirstOrDefault(s => s.Type == SensorType.SmallData &&
+                    (s.Name.Equals("GPU Memory Total", StringComparison.OrdinalIgnoreCase) ||
+                     s.Name.Equals("D3D Dedicated Memory Total", StringComparison.OrdinalIgnoreCase)))?.Value;
+                var type = g.First().HardwareType;
+                var integrated = type != HardwareType.GpuNvidia && (memory ?? 0) < 2048;
+                var name = System.Text.RegularExpressions.Regex.Replace(g.First().HardwareName, @"\s*\((R|TM)\)", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                return new Gpu(g.Key, name, type, memory, integrated);
+            })
             .ToList();
 
     /// <summary>The configured GPU; "auto" prefers NVIDIA, then the AMD card with the most memory, then Intel.</summary>
@@ -35,10 +48,8 @@ static class HardwareSensors
         {
             return gpus.FirstOrDefault(g => g.Id == device);
         }
-        double MemoryTotal(Gpu gpu) => sensors.FirstOrDefault(s => s.HardwareIdentifier == gpu.Id && s.Type == SensorType.SmallData &&
-            s.Name.Contains("Memory Total", StringComparison.OrdinalIgnoreCase))?.Value ?? 0;
         return gpus.OrderByDescending(g => g.Type switch { HardwareType.GpuNvidia => 3, HardwareType.GpuAmd => 2, _ => 1 })
-            .ThenByDescending(MemoryTotal)
+            .ThenByDescending(g => g.MemoryMB ?? 0)
             .FirstOrDefault();
     }
 
@@ -120,7 +131,11 @@ static class HardwareSensors
                 ["id"] = g.Id,
                 ["name"] = g.Name,
                 ["driver"] = g.Type.ToString(),
+                ["memoryMB"] = g.MemoryMB,
+                ["integrated"] = g.Integrated,
             }).ToArray()),
+            // What "Automatic" picks, so the settings can name it.
+            ["autoGpu"] = PickGpu(sensors, "auto")?.Id,
             ["fanChips"] = Chips(IsCoolingFan, "fans"),
             ["tempChips"] = Chips(s => s.Type == SensorType.Temperature, "temps"),
             ["fanList"] = new JsonArray(fanList.Select(f => (JsonNode)new JsonObject

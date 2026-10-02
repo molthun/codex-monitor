@@ -564,17 +564,27 @@ namespace CodexBridge
             _numTopRows.Value = _config.TopProcesses;
 
             // Hardware
-            var gpus = (_inventory?["gpus"] as JsonArray ?? new JsonArray()).OfType<JsonObject>()
-                .Select(g => (Id: g["id"]?.GetValue<string>() ?? "", Name: $"{g["name"]?.GetValue<string>()} ({g["driver"]?.GetValue<string>()})")).ToList();
-            var gpuChoices = new List<(string Id, string Name)> { ("auto", "Automatic") };
-            gpuChoices.AddRange(gpus);
-            gpuChoices.Add(("none", "None"));
+            // Readable names: "Automatic — <the card it picks>", "<name> · 12 GB", "<name> · integrated".
+            var gpus = (_inventory?["gpus"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().Select(g =>
+            {
+                var name = g["name"]?.GetValue<string>() ?? "";
+                var memory = g["memoryMB"] is JsonValue m && m.TryGetValue<double>(out var mb) ? mb : 0;
+                var label = g["integrated"]?.GetValue<bool>() == true ? $"{name} · integrated"
+                    : memory > 0 ? $"{name} · {Math.Round(memory / 1024)} GB" : name;
+                return (Id: g["id"]?.GetValue<string>() ?? "", Name: name, Label: label);
+            }).ToList();
+            var autoName = gpus.FirstOrDefault(g => g.Id == _inventory?["autoGpu"]?.GetValue<string>()).Name;
+            var gpuChoices = new List<(string Id, string Name)> { ("auto", autoName is { Length: > 0 } ? $"Automatic — {autoName}" : "Automatic") };
+            gpuChoices.AddRange(gpus.Select(g => (g.Id, g.Label)));
+            gpuChoices.Add(("none", "Don't show a graphics card"));
             if (!gpuChoices.Any(g => g.Id == _config.GpuDevice))
             {
                 gpuChoices.Add((_config.GpuDevice, _config.GpuDevice));
             }
             _cmbGpu.Items.AddRange(gpuChoices.Select(g => g.Name).Cast<object>().ToArray());
             _cmbGpu.Tag = gpuChoices.Select(g => g.Id).ToList();
+            // Wide enough for the longest name, so nothing is cut off.
+            _cmbGpu.DropDownWidth = Math.Max(_cmbGpu.Width, gpuChoices.Max(g => TextRenderer.MeasureText(g.Name, _cmbGpu.Font).Width) + 30);
             _cmbGpu.SelectedIndex = gpuChoices.FindIndex(g => g.Id == _config.GpuDevice);
 
             var fanSensors = SensorMap(true);
