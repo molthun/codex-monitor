@@ -39,7 +39,6 @@ namespace CodexBridge
 
         // Network
         private FlowLayoutPanel _pnlNetworkAdapters = null!;
-        private TextBox _txtNetworkExclusions = null!;
         private NumericUpDown _numPlanDown = null!;
         private NumericUpDown _numPlanUp = null!;
         private NumericUpDown _numLanMbps = null!;
@@ -68,13 +67,6 @@ namespace CodexBridge
         private static readonly Color Accent = Color.FromArgb(0, 210, 230);
         private static readonly Color AccentSoft = Color.FromArgb(74, 226, 181);
         private static readonly string[] NetworkRoles = { "Auto", "Ethernet", "Wi-Fi", "Wi-Fi hotspot", "Ignore" };
-        private static readonly string[] HiddenNetworkAdapterTerms =
-        {
-            "qos packet scheduler", "wfp native mac layer", "wfp 802.3 mac layer", "lightweight filter",
-            "virtual switch extension", "virtual filtering platform", "wan miniport", "teredo tunneling",
-            "pseudo-interface", "native wifi filter driver", "virtual wifi filter driver", "vswitch", "vethernet",
-            "hyper-v virtual",
-        };
         private static readonly (string Key, string Title)[] SectionTitles =
         {
             ("health", "Health strip"), ("performance", "Performance"), ("temperatures", "Temperatures"),
@@ -382,14 +374,11 @@ namespace CodexBridge
         private Panel BuildNetworkPage()
         {
             var page = Page();
-            var network = CreateCard(page, 16, 320, "Network adapters", "Only real network adapters are shown. Windows virtual/filter adapters are ignored automatically.");
+            var network = CreateCard(page, 16, 264, "Network adapters", "Real network adapters only: virtual switches (Hyper-V, WSL), VPN tunnels and Bluetooth are skipped automatically. Auto detects each one; Ignore leaves an adapter out.");
             _pnlNetworkAdapters = new FlowLayoutPanel { Location = new Point(18, 76), Size = new Size(668, 170), BackColor = Color.Transparent, FlowDirection = FlowDirection.TopDown, WrapContents = false };
             network.Controls.Add(_pnlNetworkAdapters);
-            network.Controls.Add(new Label { Text = "Advanced ignore words", Location = new Point(18, 254), Size = new Size(180, 20), ForeColor = TextMuted, Font = new Font("Segoe UI", 8.25f) });
-            _txtNetworkExclusions = new TextBox { Location = new Point(18, 278), Size = new Size(668, 25), BackColor = Field, ForeColor = TextMain, BorderStyle = BorderStyle.FixedSingle };
-            network.Controls.Add(_txtNetworkExclusions);
 
-            var speeds = CreateCard(page, 352, 128, "Speeds",
+            var speeds = CreateCard(page, 296, 128, "Speeds",
                 "Your Internet plan marks the bars and turns amber when it is maxed out (0 = not set). LAN full scale 0 = the network card's link speed.");
             speeds.Controls.Add(FieldLabel("Internet ↓ Mbps", 18, 84, 112));
             _numPlanDown = Number(132, 81, 0, 100000);
@@ -740,7 +729,6 @@ namespace CodexBridge
             // Network
             PopulateNetworkAdapters();
             var network = _config.Root["network"] as JsonObject;
-            _txtNetworkExclusions.Text = string.Join(", ", StringList(network, "ignoreAdaptersContaining"));
             ApplyNetworkRoles(network);
             _numPlanDown.Value = Clamp(network?["internetDownMbps"]);
             _numPlanUp.Value = Clamp(network?["internetUpMbps"]);
@@ -812,11 +800,8 @@ namespace CodexBridge
                 .Select(i => new DiskEntry((string)i.Tag!, string.IsNullOrWhiteSpace(i.Text) ? (string)i.Tag! : i.Text)).ToList();
 
             var network = config.Section("network");
-            var ignoreTerms = _txtNetworkExclusions.Text.Split(',').Select(x => x.Trim().ToLowerInvariant()).Where(x => x.Length > 0).ToList();
-            foreach (var hidden in HiddenNetworkAdapterTerms)
-            {
-                AddTerm(ignoreTerms, hidden);
-            }
+            // Service adapters are skipped by built-in rules (AdapterFilter); keep only words a user added by hand.
+            var ignoreTerms = AdapterFilter.UserWords(StringList(network, "ignoreAdaptersContaining"));
             var ethernet = StringList(network, "ethernetNamesContaining");
             var wifi = StringList(network, "wifiNamesContaining");
             var wifiAp = StringList(network, "wifiApNamesContaining");
@@ -869,7 +854,7 @@ namespace CodexBridge
         {
             _pnlNetworkAdapters.Controls.Clear();
             var adapters = NetworkInterface.GetAllNetworkInterfaces()
-                .Where(nic => nic.OperationalStatus == OperationalStatus.Up && nic.NetworkInterfaceType != NetworkInterfaceType.Loopback && !IsHiddenNetworkAdapter(nic))
+                .Where(nic => nic.OperationalStatus == OperationalStatus.Up && !AdapterFilter.IsServiceAdapter(nic))
                 .OrderBy(nic => nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ? 0 : 1)
                 .ThenBy(nic => nic.Name)
                 .ToList();
@@ -906,12 +891,6 @@ namespace CodexBridge
                 var chosen = roles?.FirstOrDefault(r => string.Equals(r.Key, adapterName, StringComparison.OrdinalIgnoreCase)).Value?.GetValue<string>();
                 role.SelectedItem = chosen is not null && NetworkRoles.Contains(chosen) ? chosen : "Auto";
             }
-        }
-
-        private static bool IsHiddenNetworkAdapter(NetworkInterface adapter)
-        {
-            var combined = $"{adapter.Name} {adapter.Description}";
-            return HiddenNetworkAdapterTerms.Any(term => combined.Contains(term, StringComparison.OrdinalIgnoreCase));
         }
 
         private static string GetNetworkAdapterDisplayName(NetworkInterface adapter)
