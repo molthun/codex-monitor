@@ -9,12 +9,13 @@ Histogram and Line meters with PIL. Not a full Rainmeter, but close enough to se
 Usage: python3 rainmeter-emulator.py skin.ini temps.txt out.png  (needs Pillow and DejaVu fonts)
 """
 import math
+import os
 import re
 import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-ICONS = __import__("os").path.join(__import__("os").path.dirname(__import__("os").path.abspath(__file__)), "..", "@Resources", "Icons")
+ICONS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "@Resources", "Icons")
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 problems = []
