@@ -502,6 +502,7 @@ def memory():
 # ---------------------------------------------------------------- network
 
 WIRELESS_IDLE_S = 60
+WIRELESS_ACTIVE_MBPS = 0.1
 
 
 class Network:
@@ -588,8 +589,9 @@ class Network:
         else:
             mode, a_in, a_out, dl, ul = "Off", 0.0, 0.0, 0.0, 0.0
         # An adapter that is up but carries nothing is not worth a legend: "Off" until it does,
-        # and again after a quiet minute.
-        if a_in + a_out >= 0.01:
+        # and again after a quiet minute. Below 0.1 Mbps is the network's background chatter
+        # (ARP, mDNS) that an idle Wi-Fi adapter still receives; the legend shows it as 0.0.
+        if a_in + a_out >= WIRELESS_ACTIVE_MBPS:
             self.wireless_at = now
         if mode != "Off" and (self.wireless_at is None or now - self.wireless_at > WIRELESS_IDLE_S):
             mode, a_in, a_out, dl, ul = "Off", 0.0, 0.0, 0.0, 0.0
