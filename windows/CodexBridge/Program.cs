@@ -127,6 +127,9 @@ var seen = new CodexBridge.Available(false, false, false, false, false);
 var lastErrorLog = DateTime.MinValue;
 var networkPrevious = new Dictionary<string, (long Received, long Sent)>(StringComparer.OrdinalIgnoreCase);
 var networkPreviousAt = DateTime.UtcNow;
+// Last time Wi-Fi or the hotspot carried traffic: an adapter that is up but idle is reported as "Off",
+// so the skin hides its legend (same rule as the Linux bridge).
+DateTime? wirelessAt = null;
 // Per-app traffic; app icons go next to temps.txt so the skin can show them from @Resources.
 var appTraffic = new CodexBridge.AppTraffic(Path.Combine(Path.GetDirectoryName(outFile)!, "AppIcons"));
 var netPanel = new CodexBridge.NetPanel();
@@ -293,6 +296,11 @@ do
         seen = new CodexBridge.Available(seen.CpuTemp || cpuTemp.HasValue, seen.Gpu || gpu is not null,
             seen.GpuTemp || gpuCore.HasValue, seen.Vram || vramTotalMb > 0, seen.GpuFan || gpuFan.HasValue || gpuFanPct.HasValue);
 
+        if (network.WifiActiveInMbps + network.WifiActiveOutMbps >= 0.01)
+        {
+            wirelessAt = DateTime.UtcNow;
+        }
+        var wirelessShown = network.WifiActiveMode != "Off" && wirelessAt is { } at && DateTime.UtcNow - at <= TimeSpan.FromSeconds(60);
         string Mbps(double value) => value.ToString("0.0", CultureInfo.InvariantCulture);
         var values = new Dictionary<string, string>
         {
@@ -313,11 +321,11 @@ do
             ["NetWifiOutMbps"] = Mbps(network.WifiOutMbps),
             ["NetWifiApInMbps"] = Mbps(network.WifiApInMbps),
             ["NetWifiApOutMbps"] = Mbps(network.WifiApOutMbps),
-            ["NetWifiActiveMode"] = network.WifiActiveMode,
-            ["NetWifiActiveInMbps"] = Mbps(network.WifiActiveInMbps),
-            ["NetWifiActiveOutMbps"] = Mbps(network.WifiActiveOutMbps),
-            ["NetWifiActiveDlMbps"] = Mbps(network.WifiActiveDlMbps),
-            ["NetWifiActiveUlMbps"] = Mbps(network.WifiActiveUlMbps),
+            ["NetWifiActiveMode"] = wirelessShown ? network.WifiActiveMode : "Off",
+            ["NetWifiActiveInMbps"] = Mbps(wirelessShown ? network.WifiActiveInMbps : 0),
+            ["NetWifiActiveOutMbps"] = Mbps(wirelessShown ? network.WifiActiveOutMbps : 0),
+            ["NetWifiActiveDlMbps"] = Mbps(wirelessShown ? network.WifiActiveDlMbps : 0),
+            ["NetWifiActiveUlMbps"] = Mbps(wirelessShown ? network.WifiActiveUlMbps : 0),
             ["BridgeSource"] = $"LibreHardwareMonitor{(nvidiaGpu is null ? "" : "+NvidiaSmi")}",
         };
         for (var i = 0; i < 7; i++)
