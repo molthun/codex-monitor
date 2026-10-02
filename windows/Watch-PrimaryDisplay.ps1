@@ -178,6 +178,26 @@ function Show-UpdateOffer {
     }
 }
 
+# "v2.2.0" newer than "v2.2.0-beta.1" or "v2.0.0"? A beta installed for testing must not be
+# "updated" back to an older release. Unknown local versions count as older.
+function Test-NewerVersion {
+    param([string]$Remote, [string]$Local)
+
+    function Get-VersionKey([string]$Tag) {
+        if ($Tag -notmatch '^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(-.+)?') { return $null }
+        $parts = @([int]$Matches[1], [int]("0" + $Matches[2]), [int]("0" + $Matches[3]))
+        # A final release ranks above its own pre-releases.
+        return [pscustomobject]@{ Version = [version]::new($parts[0], $parts[1], $parts[2]); Final = -not $Matches[4] }
+    }
+
+    $r = Get-VersionKey $Remote
+    $l = Get-VersionKey $Local
+    if (-not $r) { return $false }
+    if (-not $l) { return $true }
+    if ($r.Version -ne $l.Version) { return $r.Version -gt $l.Version }
+    return $r.Final -and -not $l.Final
+}
+
 function Check-ForUpdates {
     $mode = Get-UpdateMode
     if ($mode -eq "off") {
@@ -204,7 +224,7 @@ function Check-ForUpdates {
             throw "Failed to retrieve the latest release tag from GitHub API."
         }
 
-        if ($local -eq $remote) {
+        if (-not (Test-NewerVersion -Remote $remote -Local $local)) {
             Set-UpdateStatus ""
             return
         }

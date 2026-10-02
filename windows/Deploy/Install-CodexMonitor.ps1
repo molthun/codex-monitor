@@ -297,17 +297,15 @@ $trayLink.WorkingDirectory = Split-Path -Parent $bridgeExe
 $trayLink.IconLocation = "$bridgeExe,0"
 $trayLink.Save()
 
-# Create Desktop shortcut for Settings GUI (since the widget is click-through / non-interactive)
-$settingsDesktopShortcutPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "CodexMonitor Settings.lnk"
-$settingsDesktopShortcut = $shell.CreateShortcut($settingsDesktopShortcutPath)
-$settingsDesktopShortcut.TargetPath = $bridgeExe
-$settingsDesktopShortcut.Arguments = "--settings --config `"$configTarget`""
-$settingsDesktopShortcut.WorkingDirectory = Split-Path -Parent $bridgeExe
-$settingsDesktopShortcut.IconLocation = "$bridgeExe,0"
-$settingsDesktopShortcut.Save()
+# Settings live in the tray icon now; older versions also put shortcuts on the desktop.
+foreach ($old in @(
+        (Join-Path ([Environment]::GetFolderPath("Desktop")) "CodexMonitor Settings.lnk"),
+        (Join-Path ([Environment]::GetFolderPath("Programs")) "CodexMonitor Settings.lnk"))) {
+    if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force }
+}
 
-# Create Start Menu shortcut for Settings GUI
-$settingsStartMenuShortcutPath = Join-Path ([Environment]::GetFolderPath("Programs")) "CodexMonitor Settings.lnk"
+# One Start menu entry: opens the settings and brings the tray icon back if it was closed.
+$settingsStartMenuShortcutPath = Join-Path ([Environment]::GetFolderPath("Programs")) "CodexMonitor.lnk"
 $settingsStartMenuShortcut = $shell.CreateShortcut($settingsStartMenuShortcutPath)
 $settingsStartMenuShortcut.TargetPath = $bridgeExe
 $settingsStartMenuShortcut.Arguments = "--settings --config `"$configTarget`""

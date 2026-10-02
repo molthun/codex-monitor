@@ -35,6 +35,16 @@ if (args.Any(a => string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase)
 var settingsMode = args.Any(a => string.Equals(a, "--settings", StringComparison.OrdinalIgnoreCase));
 if (settingsMode)
 {
+    // Opened from the Start menu after the tray icon was closed: bring the icon back too.
+    if (!Mutex.TryOpenExisting("CodexMonitorTray", out var trayRunning))
+    {
+        Process.Start(new ProcessStartInfo(Environment.ProcessPath ?? "CodexBridge.exe", $"--tray --config \"{configPath}\"") { UseShellExecute = false });
+    }
+    else
+    {
+        trayRunning.Dispose();
+    }
+
     var thread = new System.Threading.Thread(() =>
     {
         Application.EnableVisualStyles();

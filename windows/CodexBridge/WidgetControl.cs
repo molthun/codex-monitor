@@ -140,22 +140,36 @@ sealed class WidgetControl
         return new UpdateCheck(local, latest, IsNewer(latest, local), url);
     }
 
-    /// <summary>"v2.1.0" newer than "v2.0.0-11-gabc"? Unknown local versions count as older.</summary>
+    /// <summary>
+    /// "v2.2.0" newer than "v2.2.0-beta.1" or "v2.0.0"? A final release ranks above its own
+    /// pre-releases, so a beta installed for testing is not "updated" back to an older release.
+    /// Unknown local versions count as older.
+    /// </summary>
     public static bool IsNewer(string latest, string local)
     {
         // Always three parts: Version("2.0") and Version("2.0.0") would not compare equal.
-        static Version? Parse(string tag)
+        static (Version Version, bool Final)? Parse(string tag)
         {
-            var match = Regex.Match(tag ?? "", @"^v?(\d+(?:\.\d+){0,2})");
+            var match = Regex.Match(tag ?? "", @"^v?(\d+(?:\.\d+){0,2})(-.+)?");
             if (!match.Success)
             {
                 return null;
             }
             var parts = match.Groups[1].Value.Split('.').Select(int.Parse).Concat(new[] { 0, 0 }).Take(3).ToArray();
-            return new Version(parts[0], parts[1], parts[2]);
+            return (new Version(parts[0], parts[1], parts[2]), !match.Groups[2].Success);
         }
         var remote = Parse(latest);
         var installed = Parse(local);
-        return remote is not null && (installed is null || remote > installed);
+        if (remote is null)
+        {
+            return false;
+        }
+        if (installed is null)
+        {
+            return true;
+        }
+        return remote.Value.Version != installed.Value.Version
+            ? remote.Value.Version > installed.Value.Version
+            : remote.Value.Final && !installed.Value.Final;
     }
 }

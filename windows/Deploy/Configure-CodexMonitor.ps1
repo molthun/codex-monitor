@@ -31,8 +31,9 @@ if (-not $config.installRoot -or $config.installRoot -ne $projectRoot) {
     $config.installRoot = $projectRoot
     $configChanged = $true
 }
+# Only when missing: the installer points it at the Rainmeter skin's @Resources.
 $expectedOutFile = Join-Path $projectRoot "@Resources\temps.txt"
-if (-not $config.bridge -or -not $config.bridge.outputFile -or $config.bridge.outputFile -ne $expectedOutFile) {
+if (-not $config.bridge -or -not $config.bridge.outputFile) {
     if (-not $config.bridge) { $config | Add-Member -NotePropertyName "bridge" -NotePropertyValue @{} -Force }
     $config.bridge.outputFile = $expectedOutFile
     $configChanged = $true
