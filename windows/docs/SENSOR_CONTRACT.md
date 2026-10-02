@@ -45,6 +45,7 @@ BridgeSource=LibreHardwareMonitor+NvidiaSmi
 
 ## Meaning
 
+- Sensor values (temperatures, fans, VRAM) are `-1` when the sensor is not found; the skin shows N/A. Network rates are always numbers.
 - `CPU`: CPU temperature in Celsius.
 - `GPUCore`: GPU core temperature in Celsius.
 - `GPUHotspot`: GPU hotspot temperature if available.

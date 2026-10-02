@@ -186,20 +186,28 @@ sealed class SkinBuilder
 
     /// <summary>Calc measure that sets a state variable pair (bar tint, label color) by thresholds.</summary>
     /// <param name="healthText">health cell text with {0} for OK/WARM/HOT, e.g. "CPU {0} %1°C"</param>
-    void ThresholdState(string id, string value, double warm, double hot, string? health = null, string healthText = "", string okColor = "#OK#")
+    /// <param name="valueMeter">row value meter that reads "n/a" while the sensor is missing (value &lt; 0)</param>
+    void ThresholdState(string id, string value, double warm, double hot, string? health = null, string healthText = "", string okColor = "#OK#",
+        string? valueMeter = null, string valueText = "")
     {
-        string Bangs(string tint, string label, string word, string color) =>
+        string Bangs(string tint, string label, string word, string color, bool missing = false) =>
             $"[!SetVariable {id} \"{tint}\"][!SetVariable {id}Label \"{label}\"]" +
-            (health is null ? "" : $"[!SetOption {health} Text \"{string.Format(CultureInfo.InvariantCulture, healthText, word)}\"][!SetOption {health} FontColor \"{color}\"][!SetOption {health}Bar SolidColor \"{color}\"]");
+            (valueMeter is null ? "" : $"[!SetOption {valueMeter} Text \"{(missing ? "n/a" : valueText)}\"]") +
+            (health is null ? "" : $"[!SetOption {health} Text \"{HealthText(healthText, word, missing)}\"][!SetOption {health} FontColor \"{color}\"][!SetOption {health}Bar SolidColor \"{color}\"]");
         var w = D(warm);
         var h = D(hot);
         MeasureSection($"State{id}", "Measure=Calc", $"Formula={value}",
-            $"IfCondition=({value} < 0)", $"IfTrueAction={Bangs("0,0,0,0", "#Muted#", "N/A", "#Muted#")}",
+            $"IfCondition=({value} < 0)", $"IfTrueAction={Bangs("0,0,0,0", "#Muted#", "N/A", "#Muted#", true)}",
             $"IfCondition2=({value} >= 0) && ({value} < {w})", $"IfTrueAction2={Bangs("0,0,0,0", "#Muted#", "OK", okColor)}",
             $"IfCondition3=({value} >= {w}) && ({value} < {h})", $"IfTrueAction3={Bangs("#Warm#", "#Warm#", "WARM", "#Warm#")}",
             $"IfCondition4=({value} >= {h})", $"IfTrueAction4={Bangs("#Hot#", "#Hot#", "HOT", "#Hot#")}",
             "DynamicVariables=1");
     }
+
+    /// <summary>"CPU {0} %1°C" → "CPU OK %1°C"; a missing sensor drops the value: "CPU N/A".</summary>
+    static string HealthText(string text, string word, bool missing) =>
+        missing ? text.Substring(0, text.IndexOf("{0}", StringComparison.Ordinal)) + word
+            : string.Format(CultureInfo.InvariantCulture, text, word);
 
     // ------------------------------------------------------------ layout
 
@@ -460,15 +468,26 @@ sealed class SkinBuilder
         }
         MeasureSection("MeasureVRAMUsedGB", "Measure=Calc", $"Formula={Measure("VRAMUsedMB")} / 1024", "MinValue=0");
         MeasureSection("MeasureVRAMTotalGB", "Measure=Calc", $"Formula={Measure("VRAMTotalMB")} / 1024", "MinValue=0");
+        if (_config.ShowSection("performance"))
+        {
+            // No graphics card (or no memory sensors): n/a instead of "-0.0 GB / -0.0 GB".
+            MeasureSection("StateVRAM", "Measure=Calc", $"Formula={Measure("VRAMTotalMB")}",
+                "IfCondition=StateVRAM <= 0", "IfTrueAction=[!SetOption ValueVRAM Text \"n/a\"]",
+                "IfFalseAction=[!SetOption ValueVRAM Text \"%1 GB / %2 GB\"]");
+        }
 
         // Health and color states.
         var health = _config.ShowSection("health");
-        ThresholdState("CPUState", Measure("CPU"), 65, 80, health ? "HealthCPU" : null, "CPU {0} %1°C");
-        ThresholdState("GPUState", Measure("GPUCore"), 70, 83, health ? "HealthGPU" : null, "GPU {0} %1°C", "#GPU#");
+        var temps = _config.ShowSection("temperatures");
+        ThresholdState("CPUState", Measure("CPU"), 65, 80, health ? "HealthCPU" : null, "CPU {0} %1°C",
+            valueMeter: temps ? "ValueCPUTemp" : null, valueText: "%1°C");
+        ThresholdState("GPUState", Measure("GPUCore"), 70, 83, health ? "HealthGPU" : null, "GPU {0} %1°C", "#GPU#",
+            temps ? "ValueGPUTemp" : null, "%1°C");
         ThresholdState("RAMState", "MeasureRAMPct", 85, 95, health ? "HealthRAM" : null, "RAM {0} %1%");
         for (var i = 0; i < _temps.Count; i++)
         {
-            ThresholdState($"Temp{i + 1}State", Measure($"Temp{i + 1}"), _temps[i].Warm, _temps[i].Hot);
+            ThresholdState($"Temp{i + 1}State", Measure($"Temp{i + 1}"), _temps[i].Warm, _temps[i].Hot,
+                valueMeter: temps ? $"ValueTemp{i + 1}" : null, valueText: "%1°C");
         }
         for (var i = 0; i < _disks.Count; i++)
         {
@@ -510,6 +529,11 @@ sealed class SkinBuilder
                 "IfMatch4=^none$", $"IfMatchAction4=[!SetVariable Top{n}Color \"0,0,0,0\"]",
             };
         }
+        if (key == "NetWifiActiveMode")
+        {
+            // No Wi-Fi in use: hide the wireless half of the legend instead of "Off DL/UL 0.0/0.0".
+            return new[] { "IfMatch=^(Off|0|)$", "IfMatchAction=[!HideMeter NetWirelessScale]", "IfNotMatchAction=[!ShowMeter NetWirelessScale]" };
+        }
         if (key == "UpdateAvailable")
         {
             return new[]
@@ -549,7 +573,8 @@ sealed class SkinBuilder
                 "DynamicVariables=1");
         }
         // A graphics card at 0 RPM while cool is in its normal 0 RPM mode; hot and stopped is a problem.
-        var gpuHotStopped = $"(({Measure("GPUCore")} >= 60) && ({Measure("GPUFan")} < 300) && ({Measure("GPUFanPct")} <= 0))";
+        var gpuHotStopped = $"(({Measure("GPUCore")} >= 60) && ({Measure("GPUFan")} < 300) && ({Measure("GPUFanPct")} <= 0) && " +
+            $"(({Measure("GPUFan")} >= 0) || ({Measure("GPUFanPct")} >= 0)))";
         lowParts.Add(gpuHotStopped);
         var low = string.Join(" || ", lowParts);
         if (_config.ShowSection("cooling"))
@@ -568,13 +593,17 @@ sealed class SkinBuilder
 
     void GpuFanState(string gpuHotStopped)
     {
+        // -1 in both = no fan sensors on this card (or no card): n/a.
+        var known = $"(({Measure("GPUFan")} >= 0) || ({Measure("GPUFanPct")} >= 0))";
         MeasureSection("StateGPUFan", "Measure=Calc", "Formula=1",
-            $"IfCondition=({Measure("GPUCore")} < 60) && ({Measure("GPUFan")} < 300) && ({Measure("GPUFanPct")} <= 0)",
+            $"IfCondition={known} && ({Measure("GPUCore")} < 60) && ({Measure("GPUFan")} < 300) && ({Measure("GPUFanPct")} <= 0)",
             "IfTrueAction=[!SetOption ValueGPUFan Text \"idle (0 RPM mode)\"][!SetVariable GPUFanState \"0,0,0,0\"][!SetVariable GPUFanStateLabel \"#Muted#\"]",
             $"IfCondition2={gpuHotStopped}",
             "IfTrueAction2=[!SetOption ValueGPUFan Text \"stopped\"][!SetVariable GPUFanState \"#Hot#\"][!SetVariable GPUFanStateLabel \"#Hot#\"]",
             $"IfCondition3=({Measure("GPUFan")} >= 300) || ({Measure("GPUFanPct")} > 0)",
             "IfTrueAction3=[!SetOption ValueGPUFan Text \"%1 RPM / %2%\"][!SetVariable GPUFanState \"0,0,0,0\"][!SetVariable GPUFanStateLabel \"#Muted#\"]",
+            $"IfCondition4=({Measure("GPUFan")} < 0) && ({Measure("GPUFanPct")} < 0)",
+            "IfTrueAction4=[!SetOption ValueGPUFan Text \"n/a\"][!SetVariable GPUFanState \"0,0,0,0\"][!SetVariable GPUFanStateLabel \"#Muted#\"]",
             "DynamicVariables=1");
     }
 

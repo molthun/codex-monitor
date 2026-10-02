@@ -64,6 +64,13 @@ if (-not (Test-Path -LiteralPath (Join-Path $projectRoot ".local_version"))) { t
 
 Install-WingetPackage -Id "Rainmeter.Rainmeter" -Name "Rainmeter"
 
+# CPU temperatures and board fans: LibreHardwareMonitor reads them through the PawnIO driver.
+if (Test-Path -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO") {
+    Write-Host "PawnIO sensor driver is already installed." -ForegroundColor Green
+} else {
+    Install-WingetPackage -Id "namazso.PawnIO" -Name "PawnIO sensor driver"
+}
+
 
 Write-Host ""
 Write-Host "CodexMonitor reads hardware sensors directly through LibreHardwareMonitor and does not control fan behavior." -ForegroundColor Green

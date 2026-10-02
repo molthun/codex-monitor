@@ -104,7 +104,8 @@ static class HardwareSensors
     /// What this PC has, for the settings window, in the same shape as the Linux bridge's
     /// inventory.json. Sensor ids are LibreHardwareMonitor identifiers ("/lpc/nct6798d/fan/1").
     /// </summary>
-    public static JsonObject Inventory(IReadOnlyList<SimpleSensor> sensors, IReadOnlyList<FanEntry> fanList, double? linkMbps)
+    public static JsonObject Inventory(IReadOnlyList<SimpleSensor> sensors, IReadOnlyList<FanEntry> fanList, double? linkMbps,
+        JsonObject status)
     {
         JsonArray Chips(Func<SimpleSensor, bool> pick, string key) => new(sensors.Where(pick)
             .GroupBy(s => (s.HardwareIdentifier, s.HardwareName))
@@ -147,7 +148,46 @@ static class HardwareSensors
             ["mounts"] = new JsonArray(drives.ToArray()),
             ["linkMbps"] = linkMbps,
             ["plugins"] = new JsonArray(),
+            ["status"] = status,
             ["Timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+        };
+    }
+
+    /// <summary>
+    /// Why sensors may be missing, for the settings window: CPU temperatures and board fans need
+    /// administrator rights and the PawnIO driver (LibreHardwareMonitor 0.9.5+ no longer ships WinRing0;
+    /// it finds PawnIO by the same Uninstall key).
+    /// </summary>
+    public static JsonObject Status(IComputer computer, IReadOnlyList<SimpleSensor> sensors, string? openError)
+    {
+        bool admin;
+        try
+        {
+            using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+            admin = new System.Security.Principal.WindowsPrincipal(identity).IsInRole(System.Security.Principal.WindowsBuiltInRole.Administrator);
+        }
+        catch
+        {
+            admin = false;
+        }
+        bool pawnIo;
+        try
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO");
+            pawnIo = key is not null;
+        }
+        catch
+        {
+            pawnIo = false;
+        }
+        return new JsonObject
+        {
+            ["admin"] = admin,
+            ["pawnIO"] = pawnIo,
+            ["devices"] = new JsonArray(computer.Hardware.Select(h => (JsonNode)$"{h.HardwareType}: {h.Name}").ToArray()),
+            ["cpuTemp"] = sensors.Any(s => s.HardwareType == HardwareType.Cpu && s.Type == SensorType.Temperature && s.Value.HasValue),
+            ["boardFans"] = sensors.Any(IsCoolingFan),
+            ["error"] = openError,
         };
     }
 }

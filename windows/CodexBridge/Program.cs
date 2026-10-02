@@ -69,8 +69,9 @@ if (args.Any(a => string.Equals(a, "--build-skin", StringComparison.OrdinalIgnor
     var (skin, width, height, scale) = CodexBridge.SkinBuilder.Build(skinConfig, fans, screenHeight,
         Environment.ProcessPath ?? "CodexBridge.exe");
     Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(target))!);
-    // UTF-8 with BOM, like the presets it replaces: Rainmeter needs the BOM for non-ASCII names.
-    File.WriteAllText(target, skin, new UTF8Encoding(true));
+    // UTF-16 LE with BOM: the only Unicode encoding Rainmeter reads in skins. UTF-8 is read as ANSI,
+    // which turned "°C" into "Â°C" and would garble non-ASCII fan and drive names.
+    File.WriteAllText(target, skin, Encoding.Unicode);
     Console.WriteLine($"{{\"width\": {width}, \"height\": {height}, \"scale\": {scale.ToString("0.###", CultureInfo.InvariantCulture)}, \"fans\": {fans.Count}}}");
     return;
 }
@@ -100,12 +101,14 @@ var computer = new Computer
     IsStorageEnabled = false
 };
 
+string? openError = null;
 try
 {
     computer.Open();
 }
 catch (Exception ex)
 {
+    openError = ex.Message;
     File.AppendAllText(Path.Combine(root, "CodexBridge.error.log"), $"{DateTime.Now:u} Failed to open LibreHardwareMonitor: {ex}\n");
 }
 
@@ -324,7 +327,8 @@ do
         // The settings window lists this PC's GPUs, fans, temperatures and drives from here.
         if (DateTime.UtcNow - inventoryAt > TimeSpan.FromSeconds(2))
         {
-            SafeWriteAllText(inventoryFile, CodexBridge.HardwareSensors.Inventory(sensors, fanList, linkMbps).ToJsonString());
+            SafeWriteAllText(inventoryFile, CodexBridge.HardwareSensors.Inventory(sensors, fanList, linkMbps,
+                CodexBridge.HardwareSensors.Status(computer, sensors, openError)).ToJsonString());
             inventoryAt = DateTime.UtcNow;
         }
 
@@ -477,11 +481,12 @@ static void ApplyConfig(BridgeConfig config, string path)
     }
 }
 
+// -1 = no such sensor: the skin shows n/a instead of a believable 0.
 static string Round(float? value)
 {
     return value.HasValue
         ? Math.Round(value.Value).ToString(CultureInfo.InvariantCulture)
-        : "0";
+        : "-1";
 }
 
 static void TryWriteNvidiaFallback(string outFile, List<string>? keys)

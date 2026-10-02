@@ -17,6 +17,10 @@
 - Windows: graphics card choice ("auto": NVIDIA, then the AMD card with the most memory, then Intel) with VRAM for AMD and Intel; fans from any LibreHardwareMonitor source including AIO coolers; a graphics card in 0 RPM mode shows "idle"; the bridge writes `inventory.json` for the settings.
 - Windows: updates apply without signing out — after installing, the watcher restarts the tray icon and itself on the new version.
 - Windows: the example config no longer carries the author's fan chip prefix and drives.
+- Windows: CPU temperatures and board fans need the PawnIO driver (LibreHardwareMonitor 0.9.5+ dropped WinRing0). Setup now installs it with winget, and Settings → Hardware has a Sensor access card that says what is missing (administrator rights, PawnIO, LibreHardwareMonitor errors), lists the devices found, and offers an Install PawnIO button.
+- Windows: a missing sensor shows as N/A / n/a instead of a believable 0 (the bridge writes `-1`, as it already did for fans and extra temperatures): health strip, CPU/GPU/extra temperatures, VRAM and GPU fans. A graphics card without fan sensors no longer raises FANS LOW.
+- Windows: the generated skin is saved as UTF-16 LE, the Unicode encoding Rainmeter reads; UTF-8 showed "°C" as "Â°C" and would garble non-ASCII names.
+- Windows: the wireless half of the network legend is hidden while no Wi-Fi is in use.
 ## 2026-10-01
 
 - Linux: "Top processes" shows application names and icons from `.desktop` files instead of raw process names (`Yandex Browser` instead of `yandex_browser`), groups an app's processes into one row, names helpers by their host app (`claude · Visual Studio Code`) and system services by their systemd description.

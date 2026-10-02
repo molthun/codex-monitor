@@ -22,7 +22,9 @@ problems = []
 
 
 def parse(path):
-    text = open(path, encoding="utf-8-sig").read().replace("\r\n", "\n")
+    raw = open(path, "rb").read()
+    # Generated skins are UTF-16 LE (what Rainmeter reads); older presets were UTF-8.
+    text = (raw.decode("utf-16") if raw[:2] == b"\xff\xfe" else raw.decode("utf-8-sig")).replace("\r\n", "\n")
     sections, current = [], None
     for line in text.split("\n"):
         m = re.match(r"^\[([^\]]+)\]\s*$", line)
