@@ -58,11 +58,16 @@ config.example.json
 
 Edit `config.json` directly on your workstation. Scripts pick it up on the next run; long-running services should be restarted after config changes.
 
-To install and configure everything from scratch on a clean PC, run this one-liner in an elevated PowerShell console:
+To install and configure everything from scratch on a clean PC, download **`Install-CodexMonitor.cmd`**
+from the [latest release](https://github.com/molthun/codex-monitor/releases/latest) and double-click it,
+or run in PowerShell:
 
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; irm https://raw.githubusercontent.com/molthun/codex-monitor/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/molthun/codex-monitor/main/install.ps1 | iex
 ```
+
+Both ask for administrator rights by themselves. Every release (including test pre-releases) has its
+own `Install-CodexMonitor.cmd`, which installs exactly that version.
 
 This bootstrap command will:
 1. Request **Administrator** elevation.

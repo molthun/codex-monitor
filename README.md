@@ -19,10 +19,12 @@ apply without signing out.
 
 ## Install
 
-**Windows** — in PowerShell opened as Administrator:
+**Windows** — open the [latest release](https://github.com/molthun/codex-monitor/releases/latest),
+download **`Install-CodexMonitor.cmd`** and double-click it (Windows asks for administrator rights).
+Or in PowerShell:
 
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; irm https://raw.githubusercontent.com/molthun/codex-monitor/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/molthun/codex-monitor/main/install.ps1 | iex
 ```
 
 **Linux**:

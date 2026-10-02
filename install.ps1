@@ -1,30 +1,37 @@
 # CodexMonitor installer for Windows.
 #
-#   From GitHub (elevated PowerShell):
-#     Set-ExecutionPolicy Bypass -Scope Process -Force; irm https://raw.githubusercontent.com/molthun/codex-monitor/main/install.ps1 | iex
+#   Easiest: download Install-CodexMonitor.cmd from a release on GitHub and double-click it.
+#   From PowerShell:
+#     irm https://raw.githubusercontent.com/molthun/codex-monitor/main/install.ps1 | iex
 #   From a clone:
 #     .\install.ps1
 #
 # Installs a release: its scripts and skin together with the CodexBridge.exe built for it, so they
-# always match. The latest release by default; another one (e.g. a beta) with
-#     $env:CODEXMONITOR_VERSION = "v2.2.0-beta.1"
-# before the command. From a clone it installs the clone's windows folder instead.
-# Hands off to windows\Deploy\Setup-CodexMonitor.ps1. Linux: install.sh.
+# always match. The latest release by default; another one (e.g. a beta) with -Version v2.2.0-beta.1
+# or $env:CODEXMONITOR_VERSION. From a clone it installs the clone's windows folder instead.
+# Asks for administrator rights by itself. Hands off to windows\Deploy\Setup-CodexMonitor.ps1.
+# Linux: install.sh.
+param([string]$Version = $env:CODEXMONITOR_VERSION)
 
 $ErrorActionPreference = "Stop"
+$repo = "molthun/codex-monitor"
+$Version = "$Version".Trim()
 
 # Self-elevate to Administrator context
 $myWindowsID = [System.Security.Principal.WindowsIdentity]::GetCurrent()
 $myWindowsPrincipal = New-Object System.Security.Principal.WindowsPrincipal($myWindowsID)
 $adminRole = [System.Security.Principal.WindowsBuiltInRole]::Administrator
 if (-not $myWindowsPrincipal.IsInRole($adminRole)) {
-    if (-not $PSCommandPath) {
-        # Piped through iex: there is no script file to relaunch elevated.
-        Write-Error "Run this command in PowerShell opened as Administrator."
-        exit 1
+    $script = $PSCommandPath
+    if (-not $script) {
+        # Piped through iex: save the installer to a file so it can be started again elevated.
+        $script = Join-Path $env:TEMP "codexmonitor-install.ps1"
+        $ref = if ($Version) { $Version } else { "main" }
+        Invoke-WebRequest -Uri "https://raw.githubusercontent.com/$repo/$ref/install.ps1" -OutFile $script -UseBasicParsing
     }
     Write-Host "Elevating setup bootstrap to Administrator privilege..." -ForegroundColor Yellow
-    $newArguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    $newArguments = "-NoProfile -ExecutionPolicy Bypass -File `"$script`""
+    if ($Version) { $newArguments += " -Version $Version" }
     Start-Process -FilePath "powershell.exe" -ArgumentList $newArguments -Verb RunAs
     exit
 }
@@ -48,7 +55,6 @@ if (-not (Test-Command "winget")) {
 }
 
 $installDir = "C:\CodexMonitor"
-$repo = "molthun/codex-monitor"
 $headers = @{ "User-Agent" = "CodexMonitor-Bootstrap" }
 $tempZip = Join-Path $env:TEMP "codex-monitor-bootstrap.zip"
 $tempExtract = Join-Path $env:TEMP "codex-monitor-bootstrap-extract"
@@ -76,7 +82,7 @@ if ($localWindows -and (Test-Path -LiteralPath (Join-Path $localWindows "Deploy"
     $windowsDir = $localWindows
 }
 else {
-    $requested = if ($env:CODEXMONITOR_VERSION) { $env:CODEXMONITOR_VERSION.Trim() } else { "" }
+    $requested = $Version
     $releaseUrl = if ($requested) { "https://api.github.com/repos/$repo/releases/tags/$requested" } else { "https://api.github.com/repos/$repo/releases/latest" }
     $release = Invoke-RestMethod -Uri $releaseUrl -Headers $headers -TimeoutSec 20
     $tag = $release.tag_name
