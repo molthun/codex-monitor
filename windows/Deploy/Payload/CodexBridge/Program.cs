@@ -135,6 +135,10 @@ DateTime? ethernetAt = null;
 var appTraffic = new CodexBridge.AppTraffic(Path.Combine(Path.GetDirectoryName(outFile)!, "AppIcons"));
 var netPanel = new CodexBridge.NetPanel();
 var updateStatusFile = Path.Combine(root, "update-status.txt");
+// Saved settings take effect by restarting this process from itself: it keeps its administrator
+// rights, while the settings window (not elevated) may not be allowed to restart the scheduled task.
+DateTime ConfigStamp() => File.Exists(configPath) ? File.GetLastWriteTimeUtc(configPath) : DateTime.MinValue;
+var configStamp = ConfigStamp();
 
 do
 {
@@ -376,6 +380,22 @@ do
     }
 
     await Task.Delay(TimeSpan.FromSeconds(config.BridgeUpdateSeconds ?? 1));
+
+    if (ConfigStamp() != configStamp)
+    {
+        // Let the settings window finish writing, then hand over to a fresh copy with the same arguments.
+        await Task.Delay(500);
+        computer.Close();
+        // Closing the last handle deletes the named mutex, so the new copy can take it. (Not
+        // ReleaseMutex: after an await this may run on another thread than the one that owns it.)
+        mutex.Dispose();
+        Process.Start(new ProcessStartInfo(Environment.ProcessPath!, args)
+        {
+            UseShellExecute = false,
+            WorkingDirectory = AppContext.BaseDirectory,
+        });
+        return;
+    }
 }
 while (true);
 

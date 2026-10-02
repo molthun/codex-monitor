@@ -280,6 +280,23 @@ $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interac
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Days 30) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 
+# The task runs elevated, so by default only an elevated process may start or end it. Let this user
+# do it from the tray icon, the settings window and the display watcher (none of them elevated):
+# add an access entry for the user's SID to the task's DACL.
+try {
+    $scheduler = New-Object -ComObject Schedule.Service
+    $scheduler.Connect()
+    $registered = $scheduler.GetFolder("\").GetTask($taskName)
+    $userSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $dacl = $registered.GetSecurityDescriptor(4)  # DACL_SECURITY_INFORMATION
+    if ($dacl -notmatch [regex]::Escape(";;;$userSid)")) {
+        $registered.SetSecurityDescriptor($dacl + "(A;;GRGWGX;;;$userSid)", 0)
+    }
+}
+catch {
+    Write-Warning "Could not let this user restart the bridge task: $($_.Exception.Message)"
+}
+
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($watcherShortcut)
 $shortcut.TargetPath = "powershell.exe"

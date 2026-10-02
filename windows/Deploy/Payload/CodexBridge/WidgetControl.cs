@@ -76,9 +76,21 @@ sealed class WidgetControl
 
     void Rainmeter(string bang) => Run(RainmeterExe, bang, 3000);
 
+    /// <summary>
+    /// The bridge restarts itself when config.json changes, keeping its administrator rights; this
+    /// app is not elevated and may not be allowed to end and start the scheduled task. /run only
+    /// starts the bridge when it is not running (a running task ignores a second start).
+    /// </summary>
     public void RestartBridge()
     {
-        Run("schtasks.exe", $"/end /tn \"{TaskName}\"", 5000);
+        try
+        {
+            File.SetLastWriteTimeUtc(ConfigPath, DateTime.UtcNow);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Read-only config: the task start below still covers a stopped bridge.
+        }
         Run("schtasks.exe", $"/run /tn \"{TaskName}\"", 5000);
     }
 
@@ -100,8 +112,9 @@ sealed class WidgetControl
     /// <summary>Applies saved settings: the bridge first (new fan/temperature keys), then the skin that reads them.</summary>
     public void ApplySettings()
     {
-        RestartBridge();
-        Thread.Sleep(1500);
+        // Saving config.json already restarts the bridge; give the new copy time to write its keys.
+        Run("schtasks.exe", $"/run /tn \"{TaskName}\"", 5000);
+        Thread.Sleep(3000);
         RebuildSkin();
     }
 
