@@ -50,7 +50,17 @@ jobs:
             windows/CodexBridge/bin/Release/net10.0-windows/win-x64/publish/CodexBridge.exe
             Install-CodexMonitor.cmd
           body: |
-            **Install on Windows:** download `Install-CodexMonitor.cmd` below and double-click it (Windows asks for administrator rights). Linux: see the README.
+            ### Install
+
+            **Windows:** download `Install-CodexMonitor.cmd` below and double-click it (Windows asks for administrator rights).
+
+            **Linux** (Ubuntu and other GNOME 48–50 desktops), in a terminal:
+
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/molthun/codex-monitor/${{ github.ref_name }}/install.sh | bash -s -- --version ${{ github.ref_name }}
+            ```
+
+            Already installed: the tray icon (Windows) or the top bar menu (Linux) offers new releases by itself; **Check for updates** asks right away.
           # v2.2.0-beta.1 and the like: installable for testing, ignored by releases/latest (auto-update).
           prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
