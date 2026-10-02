@@ -296,7 +296,8 @@ do
         seen = new CodexBridge.Available(seen.CpuTemp || cpuTemp.HasValue, seen.Gpu || gpu is not null,
             seen.GpuTemp || gpuCore.HasValue, seen.Vram || vramTotalMb > 0, seen.GpuFan || gpuFan.HasValue || gpuFanPct.HasValue);
 
-        if (network.WifiActiveInMbps + network.WifiActiveOutMbps >= 0.01)
+        // Below 0.1 Mbps is background chatter (ARP, mDNS) an idle adapter still receives.
+        if (network.WifiActiveInMbps + network.WifiActiveOutMbps >= 0.1)
         {
             wirelessAt = DateTime.UtcNow;
         }
