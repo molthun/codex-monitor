@@ -418,38 +418,53 @@ def pci_name(card):
     return f"{card['vendor']} GPU ({card['id']})"
 
 
-def nvidia_names():
+def nvidia_gpus():
+    """[(name, memory MB)] from nvidia-smi."""
     if not shutil.which("nvidia-smi"):
         return []
-    out = subprocess.run(["nvidia-smi", "-L"], capture_output=True, text=True).stdout
-    return re.findall(r"^GPU \d+: (.+?) \(UUID", out, re.M)
-
-
-def gpu_inventory():
-    """Every GPU the bridge can read: [{"id", "name", "driver", "reader": callable}]."""
-    gpus = [{"id": f"nvidia:{i}", "name": name, "driver": "nvidia-smi", "index": i}
-            for i, name in enumerate(nvidia_names())]
-    for card in drm_cards():
-        if card["driver"] in ("amdgpu", "i915", "xe"):
-            gpus.append({"id": f"drm:{card['id']}", "name": pci_name(card), "driver": card["driver"], "card": card})
+    out = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+                         capture_output=True, text=True).stdout
+    gpus = []
+    for line in out.strip().splitlines():
+        name, _, memory = line.rpartition(",")
+        try:
+            gpus.append((name.strip(), int(float(memory))))
+        except ValueError:
+            gpus.append((line.strip(), None))
     return gpus
 
 
+def gpu_inventory():
+    """Every GPU the bridge can read: [{"id", "name", "driver", "memoryMB", "integrated", ...}]."""
+    gpus = [{"id": f"nvidia:{i}", "name": name, "driver": "nvidia-smi", "index": i, "memoryMB": memory, "integrated": False}
+            for i, (name, memory) in enumerate(nvidia_gpus())]
+    for card in drm_cards():
+        if card["driver"] not in ("amdgpu", "i915", "xe"):
+            continue
+        vram = read_int(f"{card['path']}/mem_info_vram_total")
+        memory = vram // 1048576 if vram else None
+        # Integrated graphics: Intel on the CPU's PCI bus 00, or an AMD APU with a small VRAM carve-out.
+        integrated = card["slot"].startswith("0000:00:") if card["vendor"] == "Intel" else (memory or 0) < 2048
+        gpus.append({"id": f"drm:{card['id']}", "name": pci_name(card), "driver": card["driver"], "card": card,
+                     "memoryMB": memory, "integrated": integrated})
+    return gpus
+
+
+def rank_gpu(gpu):
+    """Automatic choice: NVIDIA, then the AMD card with the most VRAM, then Intel."""
+    if gpu["driver"] == "nvidia-smi":
+        return (3, 0)
+    if gpu["driver"] == "amdgpu":
+        return (2, gpu.get("memoryMB") or 0)
+    return (1, 0)
+
+
 def open_gpu(cfg, interval_ms, inventory):
-    """The configured GPU reader; "auto" prefers NVIDIA, then the AMD card with the most VRAM, then Intel."""
+    """The configured GPU reader ("auto" picks the best card, see rank_gpu)."""
     choice = cfg.get("device") or "auto"
     if choice == "none":
         return NoGpu()
-    if choice == "auto":
-        def rank(gpu):
-            if gpu["driver"] == "nvidia-smi":
-                return (3, 0)
-            if gpu["driver"] == "amdgpu":
-                return (2, read_int(f"{gpu['card']['path']}/mem_info_vram_total") or 0)
-            return (1, 0)
-        candidates = sorted(inventory, key=rank, reverse=True)
-    else:
-        candidates = [g for g in inventory if g["id"] == choice]
+    candidates = sorted(inventory, key=rank_gpu, reverse=True) if choice == "auto" else [g for g in inventory if g["id"] == choice]
     if not candidates:
         return NoGpu()
     gpu = candidates[0]
@@ -1062,7 +1077,10 @@ def inventory(gpus, net_data, fan_cfg):
     """What this PC has, for the settings window: GPUs, sensor chips with live values, drives, link speed."""
     chips = sensor_chips()
     return {
-        "gpus": [{"id": g["id"], "name": g["name"], "driver": g["driver"]} for g in gpus],
+        "gpus": [{"id": g["id"], "name": g["name"], "driver": g["driver"], "memoryMB": g.get("memoryMB"),
+                  "integrated": g.get("integrated", False)} for g in gpus],
+        # What "Automatic" picks, so the settings can name it.
+        "autoGpu": max(gpus, key=rank_gpu)["id"] if gpus else None,
         "fanChips": [{"name": c["name"], "fans": c["fans"], "labels": {k: v for k, v in c["labels"].items() if k in c["fans"]}}
                      for c in chips if c["fans"]],
         "tempChips": [{"name": c["name"], "temps": c["temps"], "labels": {k: v for k, v in c["labels"].items() if k in c["temps"]}}

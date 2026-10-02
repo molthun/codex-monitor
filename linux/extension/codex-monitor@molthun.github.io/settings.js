@@ -8,6 +8,7 @@ import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
 import Gtk from 'gi://Gtk';
+import Pango from 'gi://Pango';
 
 Gio._promisify(Gio.Subprocess.prototype, 'communicate_utf8_async');
 Gio._promisify(Gio.Subprocess.prototype, 'wait_check_async');
@@ -114,17 +115,49 @@ function spinRow(config, path, title, subtitle, min, max, step, fallback = 0) {
     return row;
 }
 
+// Popover entries at full length (the default factory ellipsizes "Automatic — NVIDIA …"),
+// with the check mark on the selected one like the default.
+function fullTextFactory(row) {
+    const bound = new Set();
+    const mark = item => {
+        const check = item.get_child()?.get_last_child();
+        if (check)
+            check.opacity = item.get_position() === row.selected ? 1 : 0;
+    };
+    const factory = new Gtk.SignalListItemFactory();
+    factory.connect('setup', (_factory, item) => {
+        const box = new Gtk.Box({spacing: 12});
+        box.append(new Gtk.Label({xalign: 0, hexpand: true, ellipsize: Pango.EllipsizeMode.NONE}));
+        box.append(new Gtk.Image({icon_name: 'object-select-symbolic'}));
+        item.set_child(box);
+    });
+    factory.connect('bind', (_factory, item) => {
+        item.get_child().get_first_child().label = item.get_item().get_string();
+        mark(item);
+        bound.add(item);
+    });
+    row.connect('notify::selected', () => bound.forEach(mark));
+    return factory;
+}
+
 /** Drop-down over [value, label] pairs; unknown stored values are added so nothing is lost. */
 function comboRow(config, path, title, subtitle, choices, fallback) {
     const current = config.get(path, fallback);
     if (!choices.some(([value]) => value === current))
         choices = [...choices, [current, String(current)]];
+    // Long choices: show the selected one under the title, where it has the whole width.
+    const wide = !subtitle && choices.some(([, label]) => label.length > 24);
     const row = new Adw.ComboRow({
         title,
-        subtitle: subtitle ?? '',
         model: Gtk.StringList.new(choices.map(([, label]) => label)),
         selected: choices.findIndex(([value]) => value === current),
+        use_subtitle: wide,
+        // How a choice turns into text for the subtitle (needed alongside a custom list factory).
+        expression: Gtk.PropertyExpression.new(Gtk.StringObject, null, 'string'),
     });
+    if (!wide)
+        row.subtitle = subtitle ?? '';
+    row.list_factory = fullTextFactory(row);
     row.connect('notify::selected', () => config.set(path, choices[row.selected][0]));
     return row;
 }
@@ -430,10 +463,14 @@ function hardwarePage(config, inventory, onInventory) {
     }
 
     const gpu = new Adw.PreferencesGroup({title: 'Graphics card'});
-    gpu.add(comboRow(config, 'gpu.device', 'Card shown in the widget',
-        'Automatic prefers NVIDIA, then the AMD card with the most memory, then Intel',
-        [['auto', 'Automatic'], ...inventory.gpus.map(g => [g.id, `${g.name} (${g.driver})`]), ['none', 'None']],
-        'auto'));
+    const gpuLabel = g => (g.integrated ? `${g.name} · integrated`
+        : g.memoryMB ? `${g.name} · ${Math.round(g.memoryMB / 1024)} GB` : g.name);
+    const auto = inventory.gpus.find(g => g.id === inventory.autoGpu);
+    gpu.add(comboRow(config, 'gpu.device', 'Card shown in the widget', '', [
+        ['auto', auto ? `Automatic — ${auto.name}` : 'Automatic'],
+        ...inventory.gpus.map(g => [g.id, gpuLabel(g)]),
+        ['none', "Don't show a graphics card"],
+    ], 'auto'));
     page.add(gpu);
 
     page.add(fansGroup(config, inventory, onInventory));
