@@ -657,8 +657,13 @@ sealed class NetPanel
         "NetTop1Name", "NetTop1Icon", "NetTop1Text", "NetTop1Scope",
         "NetTop2Name", "NetTop2Icon", "NetTop2Text", "NetTop2Scope",
         "NetTop3Name", "NetTop3Icon", "NetTop3Text", "NetTop3Scope",
+        "NetTop4Name", "NetTop4Icon", "NetTop4Text", "NetTop4Scope",
+        "NetTop5Name", "NetTop5Icon", "NetTop5Text", "NetTop5Scope",
         "UpdateAvailable",
     };
+
+    /// <summary>Rows the bridge reports; the skin shows widget.topProcesses of them.</summary>
+    public const int TopRows = 5;
 
     const int GraphPoints = 60;
     const double Saturated = 0.9;
@@ -734,8 +739,8 @@ sealed class NetPanel
         {
             rows.Add(("UDP / other", AppResolver.DefaultIcon, otherDown, otherUp, "other"));
         }
-        rows = rows.OrderByDescending(r => r.Down + r.Up).Take(3).ToList();
-        for (var i = 0; i < 3; i++)
+        rows = rows.OrderByDescending(r => r.Down + r.Up).Take(TopRows).ToList();
+        for (var i = 0; i < TopRows; i++)
         {
             var n = i + 1;
             var row = i < rows.Count ? rows[i] : default;

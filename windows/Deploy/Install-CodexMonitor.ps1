@@ -153,7 +153,6 @@ function Get-PrimaryMonitorPosition {
 $packageRoot = $PSScriptRoot
 $payload = Join-Path $packageRoot "Payload"
 $bridgeSource = Join-Path $payload "CodexBridge"
-$skinSource = Join-Path $payload "RainmeterSkin\CodexMonitor"
 $layoutSource = Join-Path $payload "RainmeterLayout-CodexMonitor.ini"
 
 if (-not (Test-Path -LiteralPath $payload)) {
@@ -171,7 +170,6 @@ if (-not $RainmeterSkinPath) {
 $skinTarget = Join-Path $RainmeterSkinPath "CodexMonitor"
 $resourcesTarget = Join-Path $InstallRoot "@Resources"
 $bridgeTarget = Join-Path $InstallRoot "CodexBridge"
-$presetsTarget = Join-Path $InstallRoot "Presets"
 $bridgeProject = Join-Path $bridgeTarget "CodexBridge.csproj"
 $bridgeExe = Join-Path $bridgeTarget "CodexBridge.exe"
 $watcherScript = Join-Path $InstallRoot "Watch-PrimaryDisplay.ps1"
@@ -217,13 +215,10 @@ if (-not (Test-Path -LiteralPath $payloadBridgeExe)) {
 }
 
 $skinResourcesTarget = Join-Path $skinTarget "@Resources"
-New-Item -ItemType Directory -Force -Path $InstallRoot, $resourcesTarget, $skinTarget, $presetsTarget, $skinResourcesTarget | Out-Null
+New-Item -ItemType Directory -Force -Path $InstallRoot, $resourcesTarget, $skinTarget, $skinResourcesTarget | Out-Null
 New-Item -ItemType Directory -Force -Path $bridgeTarget | Out-Null
 Copy-Item -Path (Join-Path $bridgeSource "*") -Destination $bridgeTarget -Recurse -Force
-Copy-Item -LiteralPath (Join-Path $payload "CodexMonitor.ini") -Destination (Join-Path $InstallRoot "CodexMonitor.ini") -Force
-Copy-Item -LiteralPath (Join-Path $skinSource "CodexMonitor.ini") -Destination (Join-Path $skinTarget "CodexMonitor.ini") -Force
-Copy-Item -LiteralPath (Join-Path $skinSource "CodexMonitor.1080p.ini") -Destination (Join-Path $presetsTarget "CodexMonitor.1080p.ini") -Force
-Copy-Item -LiteralPath (Join-Path $skinSource "CodexMonitor.4K.ini") -Destination (Join-Path $presetsTarget "CodexMonitor.4K.ini") -Force
+# The skin itself (CodexMonitor.ini) is generated from config.json by Switch-WidgetSize.ps1 below.
 $watcherSource = [System.IO.Path]::GetFullPath((Join-Path (Get-ProjectRoot) "Watch-PrimaryDisplay.ps1"))
 $watcherDest = [System.IO.Path]::GetFullPath($watcherScript)
 if ($watcherSource -ine $watcherDest) {
@@ -285,6 +280,23 @@ $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interac
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Days 30) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 
+# The task runs elevated, so by default only an elevated process may start or end it. Let this user
+# do it from the tray icon, the settings window and the display watcher (none of them elevated):
+# add an access entry for the user's SID to the task's DACL.
+try {
+    $scheduler = New-Object -ComObject Schedule.Service
+    $scheduler.Connect()
+    $registered = $scheduler.GetFolder("\").GetTask($taskName)
+    $userSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $dacl = $registered.GetSecurityDescriptor(4)  # DACL_SECURITY_INFORMATION
+    if ($dacl -notmatch [regex]::Escape(";;;$userSid)")) {
+        $registered.SetSecurityDescriptor($dacl + "(A;;GRGWGX;;;$userSid)", 0)
+    }
+}
+catch {
+    Write-Warning "Could not let this user restart the bridge task: $($_.Exception.Message)"
+}
+
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($watcherShortcut)
 $shortcut.TargetPath = "powershell.exe"
@@ -293,17 +305,24 @@ $shortcut.WorkingDirectory = $InstallRoot
 $shortcut.WindowStyle = 7
 $shortcut.Save()
 
-# Create Desktop shortcut for Settings GUI (since the widget is click-through / non-interactive)
-$settingsDesktopShortcutPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "CodexMonitor Settings.lnk"
-$settingsDesktopShortcut = $shell.CreateShortcut($settingsDesktopShortcutPath)
-$settingsDesktopShortcut.TargetPath = $bridgeExe
-$settingsDesktopShortcut.Arguments = "--settings --config `"$configTarget`""
-$settingsDesktopShortcut.WorkingDirectory = Split-Path -Parent $bridgeExe
-$settingsDesktopShortcut.IconLocation = "$bridgeExe,0"
-$settingsDesktopShortcut.Save()
+# Tray icon (show/hide, settings, updates, restart), started at sign-in without admin rights.
+$trayShortcut = Join-Path ([Environment]::GetFolderPath("Startup")) "CodexMonitor Tray.lnk"
+$trayLink = $shell.CreateShortcut($trayShortcut)
+$trayLink.TargetPath = $bridgeExe
+$trayLink.Arguments = "--tray --config `"$configTarget`""
+$trayLink.WorkingDirectory = Split-Path -Parent $bridgeExe
+$trayLink.IconLocation = "$bridgeExe,0"
+$trayLink.Save()
 
-# Create Start Menu shortcut for Settings GUI
-$settingsStartMenuShortcutPath = Join-Path ([Environment]::GetFolderPath("Programs")) "CodexMonitor Settings.lnk"
+# Settings live in the tray icon now; older versions also put shortcuts on the desktop.
+foreach ($old in @(
+        (Join-Path ([Environment]::GetFolderPath("Desktop")) "CodexMonitor Settings.lnk"),
+        (Join-Path ([Environment]::GetFolderPath("Programs")) "CodexMonitor Settings.lnk"))) {
+    if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force }
+}
+
+# One Start menu entry: opens the settings and brings the tray icon back if it was closed.
+$settingsStartMenuShortcutPath = Join-Path ([Environment]::GetFolderPath("Programs")) "CodexMonitor.lnk"
 $settingsStartMenuShortcut = $shell.CreateShortcut($settingsStartMenuShortcutPath)
 $settingsStartMenuShortcut.TargetPath = $bridgeExe
 $settingsStartMenuShortcut.Arguments = "--settings --config `"$configTarget`""
@@ -344,6 +363,15 @@ if (-not $SkipRainmeterLayout -and (Test-Path -LiteralPath $rainmeterIni)) {
 
 if (-not $NoStart) {
     Start-ScheduledTask -TaskName $taskName
+    # Rebuild the skin once the bridge has listed the fans (inventory.json), so the default fan
+    # rows match what it writes to temps.txt.
+    $inventory = Join-Path $skinResourcesTarget "inventory.json"
+    for ($i = 0; $i -lt 20 -and -not (Test-Path -LiteralPath $inventory); $i++) { Start-Sleep -Milliseconds 500 }
+    if (Test-Path -LiteralPath $sizeSwitcher) {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sizeSwitcher -InstallRoot $InstallRoot -ConfigPath $configTarget | Out-Null
+    }
+    # Through Explorer, so the tray runs as the signed-in user, not elevated like this installer.
+    Start-Process -FilePath "explorer.exe" -ArgumentList "`"$trayShortcut`""
     Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watcherScript`" -ConfigPath `"$configTarget`"" -WindowStyle Hidden
     if (Test-Path -LiteralPath $rainmeterExe) {
         if (-not (Get-Process Rainmeter -ErrorAction SilentlyContinue)) {

@@ -48,9 +48,10 @@ if (-not (Test-Command "winget")) {
     exit 1
 }
 
-# Record the latest release tag as the version baseline for the auto-updater.
+# Record the latest release tag as the version baseline for the auto-updater,
+# unless install.ps1 already recorded the release it installed.
 $projectRoot = Split-Path -Parent $PSScriptRoot
-try {
+if (-not (Test-Path -LiteralPath (Join-Path $projectRoot ".local_version"))) { try {
     $headers = @{ "User-Agent" = "CodexMonitor-Setup" }
     $response = Invoke-RestMethod -Uri "https://api.github.com/repos/molthun/codex-monitor/releases/latest" -Headers $headers -TimeoutSec 10
     $remoteTag = $response.tag_name
@@ -59,25 +60,32 @@ try {
         Set-Content -LiteralPath $versionFile -Value $remoteTag.Trim() -Encoding UTF8
         Write-Host "Initialized .local_version with latest release tag $remoteTag." -ForegroundColor Green
     }
-} catch {}
+} catch {} }
 
 Install-WingetPackage -Id "Rainmeter.Rainmeter" -Name "Rainmeter"
+
+# CPU temperatures and board fans: LibreHardwareMonitor reads them through the PawnIO driver.
+if (Test-Path -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\PawnIO") {
+    Write-Host "PawnIO sensor driver is already installed." -ForegroundColor Green
+} else {
+    Install-WingetPackage -Id "namazso.PawnIO" -Name "PawnIO sensor driver"
+}
 
 
 Write-Host ""
 Write-Host "CodexMonitor reads hardware sensors directly through LibreHardwareMonitor and does not control fan behavior." -ForegroundColor Green
 
-# Run the Configuration Wizard
-$wizardScript = Join-Path $PSScriptRoot "Configure-CodexMonitor.ps1"
-if (Test-Path -LiteralPath $wizardScript) {
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $wizardScript
-}
-
-# Run the main Installer to deploy skins and tasks
+# Install first (bridge, skin, tasks, tray): the settings window then sees this PC's sensors.
 $installScript = Join-Path $PSScriptRoot "Install-CodexMonitor.ps1"
 if (Test-Path -LiteralPath $installScript) {
     Write-Host "Deploying CodexMonitor widget and registering background tasks..." -ForegroundColor Cyan
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installScript
+}
+
+# Then the settings window, to pick size, sections, fans, drives and speeds.
+$wizardScript = Join-Path $PSScriptRoot "Configure-CodexMonitor.ps1"
+if (Test-Path -LiteralPath $wizardScript) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $wizardScript
 }
 
 Write-Host ""

@@ -18,7 +18,7 @@
     "mutexName": "CodexMonitorHardwareBridge",
     "outputFile": "C:\\CodexMonitor\\@Resources\\temps.txt",
     "updateSeconds": 1,
-    "boardFanIdentifierPrefix": "/lpc/nct6796dr/fan/"
+    "boardFanIdentifierPrefix": ""
   },
   "display": {
     "followPrimary": true,
@@ -35,9 +35,7 @@
     "large": "4K"
   },
   "disks": [
-    "C:",
-    "D:",
-    "E:"
+    "C:"
   ],
   "network": {
     "internetDownMbps": 0,
@@ -82,5 +80,29 @@
   },
   "startup": {
     "watcherShortcutName": "CodexMonitor Display Watcher.lnk"
+  },
+  "diskLabels": {
+    "C:": "System"
+  },
+  "widget": {
+    "scale": 0,
+    "fitToScreen": true,
+    "visible": true,
+    "topProcesses": 3,
+    "show": {
+      "health": true,
+      "performance": true,
+      "temperatures": true,
+      "cooling": true,
+      "network": true,
+      "diskIO": true,
+      "drives": true
+    }
+  },
+  "gpu": {
+    "device": "auto"
+  },
+  "temps": {
+    "list": []
   }
 }

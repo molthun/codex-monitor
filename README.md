@@ -7,8 +7,10 @@ The network panel splits traffic into **Internet** (blue) and **LAN** (mint), sc
 your network card's link speed, marks your Internet plan and lists **which applications use the
 network right now**. When a new release is out you get a notification with an **Update now** button.
 
-Settings live behind an icon: the top bar icon on Linux (size, sections, graphics card, fans,
-drives, speeds, updates), the settings wizard on Windows. Updates apply without logging out.
+Settings live behind an icon — the tray icon on Windows, the top bar icon on Linux: size (automatic
+by screen or your own), which sections to show, graphics card (NVIDIA / AMD / Intel), any number of
+fans and temperatures (water coolers included), up to six drives, your speeds, updates. Updates
+apply without signing out.
 
 | Platform | Widget | Folder |
 | --- | --- | --- |
@@ -17,10 +19,12 @@ drives, speeds, updates), the settings wizard on Windows. Updates apply without 
 
 ## Install
 
-**Windows** — in PowerShell opened as Administrator:
+**Windows** — open the [latest release](https://github.com/molthun/codex-monitor/releases/latest),
+download **`Install-CodexMonitor.cmd`** and double-click it (Windows asks for administrator rights).
+Or in PowerShell:
 
 ```powershell
-Set-ExecutionPolicy Bypass -Scope Process -Force; irm https://raw.githubusercontent.com/molthun/codex-monitor/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/molthun/codex-monitor/main/install.ps1 | iex
 ```
 
 **Linux**:

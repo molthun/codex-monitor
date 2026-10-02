@@ -12,13 +12,19 @@ Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction Silent
 if (Test-Path -LiteralPath $watcherShortcut) {
     Remove-Item -LiteralPath $watcherShortcut -Force
 }
+$trayShortcut = Join-Path ([Environment]::GetFolderPath("Startup")) "CodexMonitor Tray.lnk"
+if (Test-Path -LiteralPath $trayShortcut) {
+    Remove-Item -LiteralPath $trayShortcut -Force
+}
 $settingsDesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "CodexMonitor Settings.lnk"
 if (Test-Path -LiteralPath $settingsDesktopShortcut) {
     Remove-Item -LiteralPath $settingsDesktopShortcut -Force
 }
-$settingsStartMenuShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "CodexMonitor Settings.lnk"
-if (Test-Path -LiteralPath $settingsStartMenuShortcut) {
-    Remove-Item -LiteralPath $settingsStartMenuShortcut -Force
+foreach ($name in @("CodexMonitor Settings.lnk", "CodexMonitor.lnk")) {
+    $startMenuShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) $name
+    if (Test-Path -LiteralPath $startMenuShortcut) {
+        Remove-Item -LiteralPath $startMenuShortcut -Force
+    }
 }
 Get-Process CodexBridge -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |

@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Auto", "1080p", "4K")]
+    [ValidateSet("Auto", "1080p", "2K", "4K")]
     [string]$Mode = "Auto",
     [string]$InstallRoot = "C:\CodexMonitor",
     [string]$ConfigPath = ""
@@ -163,28 +163,9 @@ function Set-PrimaryMonitorPosition {
     return @{ X = $x; Y = $y; Width = $screen.Width; Height = $screen.Height }
 }
 
-$packageRoot = $PSScriptRoot
-$resolvedMode = $Mode
-if ($Mode -eq "Auto") {
-    $height = (Get-PhysicalPrimaryBounds).Height
-    $threshold = if ($config.display.autoProfileHeightThreshold -ne $null) { [int]$config.display.autoProfileHeightThreshold } else { 1600 }
-    $largeProfile = if ($config.profiles.large) { $config.profiles.large } else { "4K" }
-    $compactProfile = if ($config.profiles.compact) { $config.profiles.compact } else { "1080p" }
-    $resolvedMode = if ($height -ge $threshold) { $largeProfile } else { $compactProfile }
-    Write-Host "Primary screen height: $height px. Auto-selected: $resolvedMode."
-}
-
-$presetName = if ($resolvedMode -eq "4K") { "CodexMonitor.4K.ini" } else { "CodexMonitor.1080p.ini" }
-$presetCandidates = @(
-    (Join-Path $InstallRoot "Presets\$presetName"),
-    (Join-Path $packageRoot "Payload\RainmeterSkin\CodexMonitor\$presetName")
-)
-
-$preset = $presetCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-if (-not $preset) {
-    throw "Preset not found: $presetName"
-}
-
+# The skin is generated from config.json by the bridge (size, sections, drives, fans, temperatures).
+# -Mode is kept for older callers; the size comes from the config ("Auto" picks it by screen height).
+$height = (Get-PhysicalPrimaryBounds).Height
 $skinPath = Get-RainmeterSkinPath
 $skinTarget = Join-Path $skinPath "CodexMonitor\CodexMonitor.ini"
 $skinTargetDir = Split-Path -Parent $skinTarget
@@ -192,22 +173,15 @@ if (-not (Test-Path -LiteralPath $skinTargetDir)) {
     New-Item -ItemType Directory -Path $skinTargetDir -Force | Out-Null
 }
 
-Copy-Item -LiteralPath $preset -Destination $skinTarget -Force
-
-# Automatically write BridgeExe variable and Context Menu items for easy settings GUI invocation
-$lines = [System.Collections.Generic.List[string]]::new()
-foreach ($line in (Get-Content -LiteralPath $skinTarget)) { $lines.Add($line) }
 $bridgeExePath = Join-Path $InstallRoot "CodexBridge\CodexBridge.exe"
 $settingsConfigPath = if ($ConfigPath) { $ConfigPath } else { Join-Path $InstallRoot "config.json" }
-$diskRows = Get-DiskRows
-Set-IniKey -Lines $lines -Section "Variables" -Key "BridgeExe" -Value $bridgeExePath
-Set-IniKey -Lines $lines -Section "Variables" -Key "ConfigPath" -Value $settingsConfigPath
-Set-IniKey -Lines $lines -Section "Variables" -Key "Disk1" -Value $diskRows[0]
-Set-IniKey -Lines $lines -Section "Variables" -Key "Disk2" -Value $diskRows[1]
-Set-IniKey -Lines $lines -Section "Variables" -Key "Disk3" -Value $diskRows[2]
-Set-IniKey -Lines $lines -Section "Rainmeter" -Key "ContextTitle" -Value "Configure CodexMonitor"
-Set-IniKey -Lines $lines -Section "Rainmeter" -Key "ContextAction" -Value "[`"#BridgeExe#`" --settings --config `"#ConfigPath#`"]"
-Set-Content -LiteralPath $skinTarget -Value $lines -Encoding UTF8
+# CodexBridge.exe is a GUI-subsystem program: wait for it explicitly.
+$build = Start-Process -FilePath $bridgeExePath -Wait -PassThru -WindowStyle Hidden -ArgumentList @(
+    "--build-skin", "--config", "`"$settingsConfigPath`"", "--out", "`"$skinTarget`"", "--screen-height", $height)
+if ($build.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $skinTarget)) {
+    throw "Building the skin failed (exit code $($build.ExitCode))."
+}
+$resolvedMode = "generated for a $height px high screen, $(Get-WidgetWidth -Path $skinTarget) px wide"
 
 $position = Set-PrimaryMonitorPosition -SkinIni $skinTarget
 
@@ -215,6 +189,8 @@ $rainmeterExe = if ($config.rainmeter.executable) { $config.rainmeter.executable
 if (Test-Path -LiteralPath $rainmeterExe) {
     & $rainmeterExe !Refresh "CodexMonitor"
     & $rainmeterExe !Move $position.X $position.Y "CodexMonitor"
+    # "Show the widget" in the settings / tray menu.
+    if ($config.widget.visible -eq $false) { & $rainmeterExe !Hide "CodexMonitor" } else { & $rainmeterExe !Show "CodexMonitor" }
 }
 
 Write-Host "CodexMonitor widget size switched to $resolvedMode."

@@ -27,8 +27,30 @@ jobs:
       - name: Publish bridge (self-contained, single file)
         run: dotnet publish windows/CodexBridge/CodexBridge.csproj -c Release
 
+      # A double-click installer for this exact release: no command to type on the target PC.
+      - name: Create the double-click installer
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $command = "`$f = Join-Path `$env:TEMP 'codexmonitor-install.ps1'; " +
+            "Invoke-WebRequest 'https://raw.githubusercontent.com/molthun/codex-monitor/$tag/install.ps1' -OutFile `$f -UseBasicParsing; " +
+            "Start-Process powershell -Verb RunAs -ArgumentList ('-NoProfile -ExecutionPolicy Bypass -File \`"' + `$f + '\`" -Version $tag')"
+          $lines = @(
+            "@echo off",
+            "rem Installs CodexMonitor $tag. Double-click it; Windows asks for administrator rights.",
+            "powershell -NoProfile -ExecutionPolicy Bypass -Command `"$command`""
+          )
+          Set-Content -Path Install-CodexMonitor.cmd -Value $lines -Encoding ascii
+          Get-Content Install-CodexMonitor.cmd
+
       - name: Create release and upload bridge binary
         uses: softprops/action-gh-release@v2
         with:
-          files: windows/CodexBridge/bin/Release/net10.0-windows/win-x64/publish/CodexBridge.exe
+          files: |
+            windows/CodexBridge/bin/Release/net10.0-windows/win-x64/publish/CodexBridge.exe
+            Install-CodexMonitor.cmd
+          body: |
+            **Install on Windows:** download `Install-CodexMonitor.cmd` below and double-click it (Windows asks for administrator rights). Linux: see the README.
+          # v2.2.0-beta.1 and the like: installable for testing, ignored by releases/latest (auto-update).
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true

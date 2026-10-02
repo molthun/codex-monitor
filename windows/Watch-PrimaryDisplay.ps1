@@ -178,6 +178,26 @@ function Show-UpdateOffer {
     }
 }
 
+# "v2.2.0" newer than "v2.2.0-beta.1" or "v2.0.0"? A beta installed for testing must not be
+# "updated" back to an older release. Unknown local versions count as older.
+function Test-NewerVersion {
+    param([string]$Remote, [string]$Local)
+
+    function Get-VersionKey([string]$Tag) {
+        if ($Tag -notmatch '^v?(\d+)(?:\.(\d+))?(?:\.(\d+))?(-.+)?') { return $null }
+        $parts = @([int]$Matches[1], [int]("0" + $Matches[2]), [int]("0" + $Matches[3]))
+        # A final release ranks above its own pre-releases.
+        return [pscustomobject]@{ Version = [version]::new($parts[0], $parts[1], $parts[2]); Final = -not $Matches[4] }
+    }
+
+    $r = Get-VersionKey $Remote
+    $l = Get-VersionKey $Local
+    if (-not $r) { return $false }
+    if (-not $l) { return $true }
+    if ($r.Version -ne $l.Version) { return $r.Version -gt $l.Version }
+    return $r.Final -and -not $l.Final
+}
+
 function Check-ForUpdates {
     $mode = Get-UpdateMode
     if ($mode -eq "off") {
@@ -204,7 +224,7 @@ function Check-ForUpdates {
             throw "Failed to retrieve the latest release tag from GitHub API."
         }
 
-        if ($local -eq $remote) {
+        if (-not (Test-NewerVersion -Remote $remote -Local $local)) {
             Set-UpdateStatus ""
             return
         }
@@ -269,9 +289,10 @@ function Install-Release {
     }
 
     # Stop the bridge so its binary can be replaced. It runs elevated, so end it
-    # through its scheduled task first; Stop-Process covers manual runs.
+    # through its scheduled task first; Stop-Process covers the tray icon and manual runs.
     schtasks.exe /end /tn $taskName 2>$null | Out-Null
     Stop-Process -Name "CodexBridge" -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 500
 
     # Copy source files to $InstallRoot, EXCLUDING config.json to preserve user settings.
     Get-ChildItem -Path $extractedRepoDir -Recurse | ForEach-Object {
@@ -319,12 +340,11 @@ function Install-Release {
         Copy-Item -LiteralPath "$payloadIcons\*" -Destination $targetIcons -Force
     }
 
-    $mode = Get-AutoProfileMode -ScreenHeight ((Get-PhysicalPrimaryBounds).Height)
-    $preset = Get-PresetPath -Mode $mode
-    if (-not $preset) {
-        throw "Could not find a Rainmeter preset for mode $mode."
+    # Regenerate the skin with the new bridge (its layout may have changed).
+    $switcher = Join-Path $InstallRoot "Deploy\Switch-WidgetSize.ps1"
+    Invoke-CheckedCommand -Description "Rebuild the skin" -Command {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $switcher -InstallRoot $InstallRoot -ConfigPath $(if ($ConfigPath) { $ConfigPath } else { Join-Path $InstallRoot "config.json" })
     }
-    Copy-Item -LiteralPath $preset -Destination (Join-Path $skinTarget "CodexMonitor.ini") -Force
 
     # Restart the elevated bridge task (task name from config).
     Invoke-CheckedCommand -Description "Restart CodexBridge scheduled task" -Command { schtasks.exe /run /tn $taskName }
@@ -341,6 +361,21 @@ function Install-Release {
 
     Set-UpdateStatus ""
     Show-Notification "CodexMonitor Updated" "Widget has been updated to $remote successfully!"
+    Restart-AfterUpdate -BridgeExe $runBridgeExe
+}
+
+# Everything runs the new version without signing out: the tray icon starts again, and this
+# watcher hands over to a fresh copy of itself (the script on disk was just replaced).
+function Restart-AfterUpdate {
+    param([string]$BridgeExe)
+
+    $configFile = if ($ConfigPath) { $ConfigPath } else { Join-Path $InstallRoot "config.json" }
+    if (Test-Path -LiteralPath $BridgeExe) {
+        Start-Process -FilePath $BridgeExe -ArgumentList "--tray --config `"$configFile`""
+    }
+    $watcher = Join-Path $InstallRoot "Watch-PrimaryDisplay.ps1"
+    Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -ArgumentList "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$watcher`" -ConfigPath `"$configFile`""
+    exit 0
 }
 
 # "Update now" in the notification leaves update-request.txt (see Request-CodexMonitorUpdate.ps1).
@@ -464,35 +499,56 @@ function Get-AutoProfileMode {
     return $compactProfile
 }
 
-function Get-PresetPath {
-    param([string]$Mode)
+# The bridge writes the sensors it found to inventory.json ("skin" stamp); the skin carries the stamp
+# it was built with. They differ on the first run, after installing PawnIO or changing the graphics card.
+function Test-SkinHardwareChanged {
+    param([string]$SkinIni)
 
-    $presetName = if ($Mode -eq "4K") { "CodexMonitor.4K.ini" } else { "CodexMonitor.1080p.ini" }
-    $candidates = @(
-        (Join-Path $InstallRoot "Presets\$presetName"),
-        (Join-Path $InstallRoot "Deploy\Payload\RainmeterSkin\CodexMonitor\$presetName")
-    )
+    $outputFile = if ($config.bridge.outputFile) { $config.bridge.outputFile } else { Join-Path (Split-Path -Parent $SkinIni) "@Resources\temps.txt" }
+    $inventoryPath = Join-Path (Split-Path -Parent $outputFile) "inventory.json"
+    if (-not (Test-Path -LiteralPath $inventoryPath) -or -not (Test-Path -LiteralPath $SkinIni)) { return $false }
+    try {
+        $wanted = (Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json).skin
+    }
+    catch {
+        return $false
+    }
+    if (-not $wanted) { return $false }
+    $line = Get-Content -LiteralPath $SkinIni | Where-Object { $_ -match "^Hardware=(.*)$" } | Select-Object -First 1
+    $built = if ($line -match "^Hardware=(.*)$") { $Matches[1].Trim() } else { "" }
+    # One rebuild per new stamp: never loop if the rebuilt skin still disagrees.
+    if ($built -eq $wanted -or $script:skinHardwareTried -eq $wanted) { return $false }
+    $script:skinHardwareTried = $wanted
+    return $true
+}
 
-    return $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+# The bridge rewrites temps.txt every second. When it stops (crashed, killed, never started after
+# an install), the widget would freeze on old numbers: restart its task, at most every 2 minutes.
+$script:bridgeRestartAt = [System.DateTime]::MinValue
+function Repair-StaleBridge {
+    $skinIni = Join-Path (Get-RainmeterSkinPath) "CodexMonitor\CodexMonitor.ini"
+    $tempsPath = if ($config.bridge.outputFile) { $config.bridge.outputFile } else { Join-Path (Split-Path -Parent $skinIni) "@Resources\temps.txt" }
+    if (-not (Test-Path -LiteralPath $tempsPath)) { return }
+    $age = (Get-Date) - (Get-Item -LiteralPath $tempsPath).LastWriteTime
+    if ($age.TotalSeconds -lt 30 -or ((Get-Date) - $script:bridgeRestartAt).TotalMinutes -lt 2) { return }
+    $script:bridgeRestartAt = Get-Date
+    $taskName = if ($config.bridge.taskName) { $config.bridge.taskName } else { "CodexMonitor Bridge Elevated" }
+    Add-Content -LiteralPath (Join-Path $InstallRoot "CodexBridge.error.log") -Value "$(Get-Date -Format u) watcher: temps.txt is $([int]$age.TotalSeconds) s old, restarting the bridge task" -ErrorAction SilentlyContinue
+    schtasks.exe /end /tn $taskName 2>$null | Out-Null
+    schtasks.exe /run /tn $taskName 2>$null | Out-Null
 }
 
 function Switch-ProfileIfNeeded {
     param($ScreenBounds)
 
-    if ($config.profiles.auto -eq $false) { return $false }
-
-    $mode = Get-AutoProfileMode -ScreenHeight $ScreenBounds.Height
-    $preset = Get-PresetPath -Mode $mode
-    if (-not $preset) { return $false }
-
+    # The skin is generated for a screen height and for the sensors the bridge found (both stamped in
+    # its [Metadata]); rebuild it when either changes.
     $skinPath = Get-RainmeterSkinPath
     $skinIni = Join-Path $skinPath "CodexMonitor\CodexMonitor.ini"
-    $currentWidth = Get-IniNumber -Path $skinIni -Key "W" -Default 0
-    $currentHeight = Get-IniNumber -Path $skinIni -Key "H" -Default 0
-    $targetWidth = Get-IniNumber -Path $preset -Key "W" -Default $currentWidth
-    $targetHeight = Get-IniNumber -Path $preset -Key "H" -Default $currentHeight
-
-    if ($currentWidth -eq $targetWidth -and $currentHeight -eq $targetHeight) { return $false }
+    $builtFor = Get-IniNumber -Path $skinIni -Key "ScreenHeight" -Default 0
+    $heightChanged = ($config.profiles.auto -ne $false) -and ($builtFor -ne $ScreenBounds.Height)
+    if (-not $heightChanged -and -not (Test-SkinHardwareChanged -SkinIni $skinIni)) { return $false }
+    $mode = Get-AutoProfileMode -ScreenHeight $ScreenBounds.Height
 
     $switcher = Join-Path $InstallRoot "Deploy\Switch-WidgetSize.ps1"
     if (-not (Test-Path -LiteralPath $switcher)) { return $false }
@@ -642,6 +698,8 @@ while ($true) {
             Check-ForPrerequisiteUpdates
             $lastPrereqCheck = Get-Date
         }
+
+        Repair-StaleBridge
 
         $screen = Get-PhysicalPrimaryBounds
         $switched = Switch-ProfileIfNeeded -ScreenBounds $screen
