@@ -107,7 +107,7 @@ Renaming/removing keys is not safe unless all Rainmeter WebParser measures are u
 
 The output of the bridge is customizable via the workstation's `config.json`:
 - **Motherboard Fans (`BoardFan1..7`)**: The search prefix is configured using `"boardFanIdentifierPrefix"` under `"bridge"` (default: `"/lpc/nct6796dr/fan/"`). If no sensors match this prefix, the bridge dynamically falls back to listing any other available RPM sensors not mapped to the CPU or GPU.
-- **Network Traffic**: Classification of adapters is configured via the `"network"` section in `config.json` (`ignoreAdaptersContaining`, `wifiApNamesContaining`, `wifiNamesContaining`, `ethernetNamesContaining`). The bridge supports IPv6 traffic monitoring automatically by utilizing combined IP statistics.
+- **Network Traffic**: Classification of adapters is configured via the `"network"` section in `config.json` (`ignoreAdaptersContaining`, `wifiApNamesContaining`, `wifiNamesContaining`, `ethernetNamesContaining`: words in the adapter name; the adapter type is used first). A role chosen in the settings for one adapter is stored by its exact name in `adapterRoles` (`{"Ethernet 2": "Ignore"}`; `Ethernet`, `Wi-Fi`, `Wi-Fi hotspot`, `Ignore`) and wins over the words; adapters without an entry are Auto. The bridge supports IPv6 traffic monitoring automatically by utilizing combined IP statistics.
 
 ## Debugging
 

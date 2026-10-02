@@ -485,6 +485,12 @@ static void ApplyConfig(BridgeConfig config, string path)
         {
             config.NetworkWifiNames = wifi.EnumerateArray().Select(x => x.GetString()!).ToList();
         }
+        // Roles chosen in the settings for one adapter, by its exact name; every other adapter is "Auto".
+        if (network.TryGetProperty("adapterRoles", out var roles) && roles.ValueKind == JsonValueKind.Object)
+        {
+            config.NetworkAdapterRoles = roles.EnumerateObject().Where(r => r.Value.ValueKind == JsonValueKind.String)
+                .ToDictionary(r => r.Name, r => r.Value.GetString()!, StringComparer.OrdinalIgnoreCase);
+        }
         if (network.TryGetProperty("ethernetNamesContaining", out var eth) && eth.ValueKind == JsonValueKind.Array)
         {
             config.NetworkEthernetNames = eth.EnumerateArray().Select(x => x.GetString()!).ToList();
@@ -693,7 +699,9 @@ static (double EthInMbps, double EthOutMbps, double WifiInMbps, double WifiOutMb
         var text = $"{name} {description}";
         var lower = text.ToLowerInvariant();
 
-        if (ignoreList.Any(ignore => lower.Contains(ignore, StringComparison.OrdinalIgnoreCase)))
+        config.NetworkAdapterRoles.TryGetValue(name, out var chosenRole);
+        if (chosenRole is "Ignore" ||
+            (chosenRole is null && ignoreList.Any(ignore => lower.Contains(ignore, StringComparison.OrdinalIgnoreCase))))
         {
             continue;
         }
@@ -734,11 +742,13 @@ static (double EthInMbps, double EthOutMbps, double WifiInMbps, double WifiOutMb
 
         var rxMbps = Math.Max(0, rxBytes - old.Received) * 8 / seconds / 1_000_000;
         var txMbps = Math.Max(0, txBytes - old.Sent) * 8 / seconds / 1_000_000;
-        var isWifiDirect = wifiApList.Any(ap => lower.Contains(ap, StringComparison.OrdinalIgnoreCase));
-        var isWifi = nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ||
-                     wifiList.Any(w => lower.Contains(w, StringComparison.OrdinalIgnoreCase));
-        var isEthernet = nic.NetworkInterfaceType == NetworkInterfaceType.Ethernet ||
-                         ethList.Any(e => lower.Contains(e, StringComparison.OrdinalIgnoreCase));
+        // A role chosen for this adapter wins; "Auto" (no entry) detects it from its type and name.
+        var isWifiDirect = chosenRole is "Wi-Fi hotspot" ||
+                           (chosenRole is null && wifiApList.Any(ap => lower.Contains(ap, StringComparison.OrdinalIgnoreCase)));
+        var isWifi = chosenRole is "Wi-Fi" || (chosenRole is null && (nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ||
+                     wifiList.Any(w => lower.Contains(w, StringComparison.OrdinalIgnoreCase))));
+        var isEthernet = chosenRole is "Ethernet" || (chosenRole is null && (nic.NetworkInterfaceType == NetworkInterfaceType.Ethernet ||
+                         ethList.Any(e => lower.Contains(e, StringComparison.OrdinalIgnoreCase))));
 
         if (isWifiDirect)
         {
@@ -840,5 +850,6 @@ sealed class BridgeConfig
     public List<string>? NetworkWifiApNames { get; set; }
     public List<string>? NetworkWifiNames { get; set; }
     public List<string>? NetworkEthernetNames { get; set; }
+    public Dictionary<string, string> NetworkAdapterRoles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public CodexBridge.NetPanelConfig NetPanel { get; } = new();
 }

@@ -820,18 +820,25 @@ namespace CodexBridge
             var ethernet = StringList(network, "ethernetNamesContaining");
             var wifi = StringList(network, "wifiNamesContaining");
             var wifiAp = StringList(network, "wifiApNamesContaining");
+            var roles = new JsonObject();
             foreach (var (name, role) in GetSelectedNetworkRoles())
             {
+                // Older versions saved a role by adding the adapter's name to these word lists, which
+                // then matched other adapters too ("Ethernet" in "vethernet"); roles live in adapterRoles now.
                 foreach (var list in new[] { ethernet, wifi, wifiAp, ignoreTerms })
                 {
                     list.RemoveAll(x => string.Equals(x, name, StringComparison.OrdinalIgnoreCase));
                 }
-                var target = role switch { "Ethernet" => ethernet, "Wi-Fi" => wifi, "Wi-Fi hotspot" => wifiAp, "Ignore" => ignoreTerms, _ => null };
-                if (target is not null)
+                if (role != "Auto")
                 {
-                    AddTerm(target, name);
+                    roles[name] = role;
                 }
             }
+            // Dropping adapter names also drops built-in words equal to common names ("Ethernet", "Wi-Fi").
+            AddTerm(ethernet, "ethernet");
+            AddTerm(wifi, "wi-fi");
+            AddTerm(wifi, "wifi");
+            network["adapterRoles"] = roles;
             JsonArray Array(List<string> items) => new(items.Select(x => (JsonNode)x).ToArray());
             network["ignoreAdaptersContaining"] = Array(ignoreTerms);
             network["ethernetNamesContaining"] = Array(ethernet);
@@ -878,18 +885,17 @@ namespace CodexBridge
                 row.Controls.Add(new Label { Text = GetNetworkAdapterDisplayName(adapter), Location = new Point(0, 4), Size = new Size(420, 24), AutoEllipsis = true, ForeColor = TextMain, Font = new Font("Segoe UI", 8.8f) });
                 var role = Combo(452, 2, 176, NetworkRoles);
                 role.Tag = adapter.Name;
-                role.SelectedItem = adapter.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ? "Wi-Fi" : "Auto";
+                // Auto unless a role was chosen for this adapter (ApplyNetworkRoles).
+                role.SelectedItem = "Auto";
                 row.Controls.Add(role);
                 _pnlNetworkAdapters.Controls.Add(row);
             }
         }
 
+        /// <summary>Roles chosen for single adapters ("adapterRoles": exact name → role); the rest stay Auto.</summary>
         private void ApplyNetworkRoles(JsonObject? network)
         {
-            var ignore = StringList(network, "ignoreAdaptersContaining");
-            var ethernet = StringList(network, "ethernetNamesContaining");
-            var wifi = StringList(network, "wifiNamesContaining");
-            var wifiAp = StringList(network, "wifiApNamesContaining");
+            var roles = network?["adapterRoles"] as JsonObject;
             foreach (var row in _pnlNetworkAdapters.Controls.OfType<Panel>())
             {
                 var role = row.Controls.OfType<ComboBox>().FirstOrDefault();
@@ -897,10 +903,8 @@ namespace CodexBridge
                 {
                     continue;
                 }
-                if (ContainsTerm(ignore, adapterName)) role.SelectedItem = "Ignore";
-                else if (ContainsTerm(wifiAp, adapterName)) role.SelectedItem = "Wi-Fi hotspot";
-                else if (ContainsTerm(wifi, adapterName)) role.SelectedItem = "Wi-Fi";
-                else if (ContainsTerm(ethernet, adapterName)) role.SelectedItem = "Ethernet";
+                var chosen = roles?.FirstOrDefault(r => string.Equals(r.Key, adapterName, StringComparison.OrdinalIgnoreCase)).Value?.GetValue<string>();
+                role.SelectedItem = chosen is not null && NetworkRoles.Contains(chosen) ? chosen : "Auto";
             }
         }
 
@@ -917,11 +921,6 @@ namespace CodexBridge
             return string.IsNullOrWhiteSpace(description) || name.Contains(description, StringComparison.OrdinalIgnoreCase) ? name : $"{name} - {description}";
         }
 
-        // One direction only, like the bridge: the adapter's name contains the term. The reverse made a
-        // plain "Ethernet" adapter look ignored because the ignore word "vethernet" contains it, and
-        // saving then really ignored it.
-        private static bool ContainsTerm(IEnumerable<string> terms, string adapterName) =>
-            terms.Any(term => adapterName.Contains(term, StringComparison.OrdinalIgnoreCase));
 
         private List<(string Name, string Role)> GetSelectedNetworkRoles() =>
             _pnlNetworkAdapters.Controls.OfType<Panel>()
