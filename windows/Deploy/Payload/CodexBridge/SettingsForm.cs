@@ -53,6 +53,7 @@ namespace CodexBridge
         private Label _lblApplyStatus = null!;
         private Label _lblSensorStatus = null!;
         private Button _btnPawnIo = null!;
+        private Button _btnRestartBridge = null!;
         private readonly ToolTip _tip = new();
         private Button _btnSave = null!;
         private readonly List<(Button Tab, Panel Page)> _pages = new();
@@ -288,18 +289,24 @@ namespace CodexBridge
         private Panel BuildHardwarePage()
         {
             var page = Page();
-            var access = CreateCard(page, 16, 112, "Sensor access",
+            var access = CreateCard(page, 16, 140, "Sensor access",
                 "CPU temperatures and board fans need the bridge to run as administrator and the PawnIO driver; graphics cards work without them.");
-            _lblSensorStatus = new Label { Location = new Point(18, 78), Size = new Size(520, 28), ForeColor = TextMain, AutoEllipsis = true };
+            _lblSensorStatus = new Label { Location = new Point(18, 76), Size = new Size(520, 56), ForeColor = TextMain, AutoEllipsis = true };
             _btnPawnIo = SmallButton("Install PawnIO…", 548, 74, 138, (_, _) => InstallPawnIo());
             _btnPawnIo.Visible = false;
-            access.Controls.AddRange(new Control[] { _lblSensorStatus, _btnPawnIo });
+            _btnRestartBridge = SmallButton("Restart bridge", 548, 74, 138, (_, _) =>
+            {
+                _lblSensorStatus.Text = "Restarting the bridge…";
+                _widget.RestartBridge();
+            });
+            _btnRestartBridge.Visible = false;
+            access.Controls.AddRange(new Control[] { _lblSensorStatus, _btnPawnIo, _btnRestartBridge });
 
-            var gpu = CreateCard(page, 144, 112, "Graphics card", "Automatic prefers NVIDIA, then the AMD card with the most memory, then Intel.");
+            var gpu = CreateCard(page, 172, 112, "Graphics card", "Automatic prefers NVIDIA, then the AMD card with the most memory, then Intel.");
             _cmbGpu = Combo(18, 76, 520, Array.Empty<string>());
             gpu.Controls.Add(_cmbGpu);
 
-            var fans = CreateCard(page, 272, 300, "Fans",
+            var fans = CreateCard(page, 300, 300, "Fans",
                 "Board fans, AIO pumps and radiator fans, in the widget's order. Watch the live speeds to tell them apart: load the CPU and its cooler speeds up. Double-click a name to rename it; Warn marks fans whose stop is an alarm.");
             _lstFans = DarkList(18, 76, 668, 170, ("Name", 190), ("Sensor", 300), ("Speed", 90), ("Warn", 70));
             _lstFans.LabelEdit = true;
@@ -318,7 +325,7 @@ namespace CodexBridge
                 }
             }));
 
-            var temps = CreateCard(page, 588, 300, "More temperatures",
+            var temps = CreateCard(page, 616, 300, "More temperatures",
                 "Shown after CPU and GPU: liquid temperature of an AIO cooler, board, drives. Amber and red thresholds per sensor; liquid defaults to 40 / 50 °C.");
             _lstTemps = DarkList(18, 76, 668, 170, ("Name", 190), ("Sensor", 300), ("Now", 80), ("Amber", 50), ("Red", 50));
             _lstTemps.LabelEdit = true;
@@ -353,7 +360,7 @@ namespace CodexBridge
             _numWarm.ValueChanged += (_, _) => UpdateLimits();
             _numHot.ValueChanged += (_, _) => UpdateLimits();
 
-            var drives = CreateCard(page, 904, 240, "Drives", $"Up to {AppConfig.MaxDisks} drives for Disk I/O and Drives used, in this order. Double-click a name to rename it.");
+            var drives = CreateCard(page, 932, 240, "Drives", $"Up to {AppConfig.MaxDisks} drives for Disk I/O and Drives used, in this order. Double-click a name to rename it.");
             _lstDrives = DarkList(18, 76, 668, 150, ("Name in the widget", 230), ("Drive", 120), ("Size", 300));
             _lstDrives.CheckBoxes = true;
             _lstDrives.LabelEdit = true;
@@ -367,7 +374,7 @@ namespace CodexBridge
             };
             drives.Controls.Add(_lstDrives);
 
-            var note = CreateCard(page, 1160, 80, "Other USB devices",
+            var note = CreateCard(page, 1188, 80, "Other USB devices",
                 "Fan hubs and controllers that LibreHardwareMonitor does not know can be added with a sensor plugin; ask on GitHub, the format is shared with Linux.");
             return page;
         }
@@ -563,8 +570,13 @@ namespace CodexBridge
             var status = _inventory?["status"] as JsonObject;
             bool Flag(string key) => status?[key]?.GetValue<bool>() ?? false;
             var devices = (status?["devices"] as JsonArray ?? new JsonArray()).Select(d => d?.GetValue<string>()).OfType<string>().ToList();
+            // inventory.json is rewritten every 2 s while the bridge runs.
+            var reportedAt = _inventory?["Timestamp"]?.GetValue<long>();
+            var silentFor = reportedAt is { } at ? DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeSeconds(at) : (TimeSpan?)null;
+            var stopped = silentFor is { TotalSeconds: > 20 };
             var (text, warn) = status switch
             {
+                _ when stopped => ($"The bridge is not running (last report {Ago(silentFor!.Value)} ago), so the widget shows old values.{LastBridgeError()}", true),
                 null when _inventory is null => ("The bridge has not reported yet. If this stays, choose Restart in the tray menu.", true),
                 null => ("This bridge version does not report sensor access.", false),
                 _ when status["virtualMachine"]?.GetValue<string>() is { Length: > 0 } vm && !Flag("cpuTemp") =>
@@ -578,9 +590,28 @@ namespace CodexBridge
             _lblSensorStatus.Text = text;
             _lblSensorStatus.ForeColor = warn ? Color.FromArgb(255, 193, 94) : TextMain;
             _tip.SetToolTip(_lblSensorStatus, devices.Count == 0 ? text : text + "\n\n" + string.Join("\n", devices));
+            _btnRestartBridge.Visible = stopped || _inventory is null;
             // A virtual machine has nothing for PawnIO to read.
-            _btnPawnIo.Visible = status is not null && Flag("admin") && !Flag("pawnIO") &&
+            _btnPawnIo.Visible = !_btnRestartBridge.Visible && status is not null && Flag("admin") && !Flag("pawnIO") &&
                 status["virtualMachine"]?.GetValue<string>() is not { Length: > 0 };
+        }
+
+        private static string Ago(TimeSpan span) =>
+            span.TotalHours >= 1 ? $"{(int)span.TotalHours} h" : span.TotalMinutes >= 1 ? $"{(int)span.TotalMinutes} min" : $"{(int)span.TotalSeconds} s";
+
+        /// <summary>" Last error: …" from CodexBridge.error.log, or "".</summary>
+        private string LastBridgeError()
+        {
+            try
+            {
+                var line = File.ReadLines(Path.Combine(_widget.InstallRoot, "CodexBridge.error.log"))
+                    .Where(l => l.Trim().Length > 0).LastOrDefault();
+                return line is null ? "" : $" Last error: {line.Trim()}";
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return "";
+            }
         }
 
         /// <summary>PawnIO from winget (asks for administrator rights), then a bridge restart to load it.</summary>

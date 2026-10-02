@@ -522,6 +522,22 @@ function Test-SkinHardwareChanged {
     return $true
 }
 
+# The bridge rewrites temps.txt every second. When it stops (crashed, killed, never started after
+# an install), the widget would freeze on old numbers: restart its task, at most every 2 minutes.
+$script:bridgeRestartAt = [System.DateTime]::MinValue
+function Repair-StaleBridge {
+    $skinIni = Join-Path (Get-RainmeterSkinPath) "CodexMonitor\CodexMonitor.ini"
+    $tempsPath = if ($config.bridge.outputFile) { $config.bridge.outputFile } else { Join-Path (Split-Path -Parent $skinIni) "@Resources\temps.txt" }
+    if (-not (Test-Path -LiteralPath $tempsPath)) { return }
+    $age = (Get-Date) - (Get-Item -LiteralPath $tempsPath).LastWriteTime
+    if ($age.TotalSeconds -lt 30 -or ((Get-Date) - $script:bridgeRestartAt).TotalMinutes -lt 2) { return }
+    $script:bridgeRestartAt = Get-Date
+    $taskName = if ($config.bridge.taskName) { $config.bridge.taskName } else { "CodexMonitor Bridge Elevated" }
+    Add-Content -LiteralPath (Join-Path $InstallRoot "CodexBridge.error.log") -Value "$(Get-Date -Format u) watcher: temps.txt is $([int]$age.TotalSeconds) s old, restarting the bridge task" -ErrorAction SilentlyContinue
+    schtasks.exe /end /tn $taskName 2>$null | Out-Null
+    schtasks.exe /run /tn $taskName 2>$null | Out-Null
+}
+
 function Switch-ProfileIfNeeded {
     param($ScreenBounds)
 
@@ -682,6 +698,8 @@ while ($true) {
             Check-ForPrerequisiteUpdates
             $lastPrereqCheck = Get-Date
         }
+
+        Repair-StaleBridge
 
         $screen = Get-PhysicalPrimaryBounds
         $switched = Switch-ProfileIfNeeded -ScreenBounds $screen
