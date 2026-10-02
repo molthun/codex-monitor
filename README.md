@@ -31,7 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/molthun/codex-monitor/main/install.
 
 From a clone, run `install.ps1` (Windows) or `./install.sh` (Linux) in the repository root.
 
-To install a particular release on Linux (for example a beta), add `-s -- --version v2.2.0-beta.6` after `bash`.
+To install a particular release on Linux (for example a beta), add `-s -- --version <tag>` after `bash`, e.g. `--version v2.2.0`.
 
 ## Your speeds
 
