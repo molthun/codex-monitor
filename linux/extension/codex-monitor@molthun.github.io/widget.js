@@ -393,7 +393,7 @@ class MonitorWidget {
     }
 
     // One bar per direction: an Internet segment followed by a LAN segment, scaled to the link speed,
-    // with a tick at the Internet plan speed.
+    // with a faint tick at the Internet plan speed.
     _splitRow(title) {
         const s = this._s;
         const line = new St.BoxLayout({x_expand: true, style: `margin-top: ${s(BASE.rowGap)}px; spacing: ${s(6)}px;`});
@@ -493,10 +493,10 @@ class MonitorWidget {
         const maxed = split && cap > 0 && wan >= cap * SATURATED;
         row.cap.visible = cap > 0 && cap < scale;
         if (row.cap.visible) {
-            const tickW = Math.max(1, s(2));
-            row.cap.set_position(Math.round(width * cap / scale - tickW / 2), -s(2));
-            row.cap.set_style(`width: ${tickW}px; height: ${h + 2 * s(2)}px;` +
-                `background-color: ${maxed ? COLOR.warm : 'rgba(255,255,255,0.55)'};`);
+            // A faint 1 px hint inside the bar; amber only while the Internet share is at the plan.
+            row.cap.set_position(Math.round(width * cap / scale), 0);
+            row.cap.set_style(`width: 1px; height: ${h}px;` +
+                `background-color: ${maxed ? COLOR.warm : 'rgba(255,255,255,0.2)'};`);
         }
 
         row.label.set_style(`font-size: ${s(BASE.label)}px;${maxed ? ` color: ${COLOR.warm};` : ''}`);
