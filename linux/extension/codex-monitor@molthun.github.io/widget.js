@@ -680,7 +680,9 @@ class MonitorWidget {
         this._setTopProcesses(d, down + up);
         this._ethFooter.text = `ETH DL/UL ${fmt(d.NetEthInMbps, 1)}/${fmt(d.NetEthOutMbps, 1)} Mbps`;
         const wifiMode = d.NetWifiActiveMode || 'Off';
-        this._wifiFooter.text = wifiMode === 'Off' ? 'Wi-Fi off'
+        // Hidden while no Wi-Fi is in use (the bridge reports an idle adapter as "Off").
+        this._wifiFooter.visible = wifiMode !== 'Off';
+        this._wifiFooter.text = wifiMode === 'Off' ? ''
             : `${wifiMode === 'AP' ? 'AP' : 'Wi-Fi'} DL/UL ${fmt(d.NetWifiActiveDlMbps, 1)}/${fmt(d.NetWifiActiveUlMbps, 1)} Mbps`;
     }
 }
