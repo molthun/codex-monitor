@@ -514,6 +514,7 @@ class Network:
         self.bitrates = {}
         self.modes_at = 0
         self.wireless_at = None  # last time Wi-Fi or the hotspot carried traffic
+        self.ethernet_at = None  # last time a wired adapter did
 
     def _kind(self, iface):
         low = iface.lower()
@@ -595,12 +596,16 @@ class Network:
             self.wireless_at = now
         if mode != "Off" and (self.wireless_at is None or now - self.wireless_at > WIRELESS_IDLE_S):
             mode, a_in, a_out, dl, ul = "Off", 0.0, 0.0, 0.0, 0.0
+        # Same rule for the wired legend (a laptop on Wi-Fi has nothing to say about Ethernet).
+        if eth[0] + eth[1] >= WIRELESS_ACTIVE_MBPS:
+            self.ethernet_at = now
+        eth_active = self.ethernet_at is not None and now - self.ethernet_at <= WIRELESS_IDLE_S
         speeds = [read_int(f"/sys/class/net/{i}/speed") if k == "eth" else self._wifi_bitrate(i)
                   for i, (k, _, _) in counters.items()]
         speeds = [round(v) for v in speeds if v and v > 0]
         return {
             "NetLinkMbps": max(speeds) if speeds else None,
-            "NetEthInMbps": eth[0], "NetEthOutMbps": eth[1],
+            "NetEthInMbps": eth[0], "NetEthOutMbps": eth[1], "NetEthActive": eth_active,
             "NetWifiInMbps": wifi[0], "NetWifiOutMbps": wifi[1],
             "NetWifiApInMbps": ap[0], "NetWifiApOutMbps": ap[1],
             "NetWifiActiveMode": mode,

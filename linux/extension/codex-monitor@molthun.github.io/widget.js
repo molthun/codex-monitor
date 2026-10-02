@@ -678,6 +678,8 @@ class MonitorWidget {
         this._setSplitRow(this._netDown, point[0], point[1], link, this._capDown, mode !== 'none');
         this._setSplitRow(this._netUp, point[2], point[3], link, this._capUp, mode !== 'none');
         this._setTopProcesses(d, down + up);
+        // Hidden while no cable carries traffic, like the Wi-Fi half (older bridges: always shown).
+        this._ethFooter.opacity = d.NetEthActive === false ? 0 : 255;
         this._ethFooter.text = `ETH DL/UL ${fmt(d.NetEthInMbps, 1)}/${fmt(d.NetEthOutMbps, 1)} Mbps`;
         const wifiMode = d.NetWifiActiveMode || 'Off';
         // Hidden while no Wi-Fi is in use (the bridge reports an idle adapter as "Off").
