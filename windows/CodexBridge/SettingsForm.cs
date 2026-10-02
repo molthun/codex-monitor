@@ -886,8 +886,11 @@ namespace CodexBridge
             return string.IsNullOrWhiteSpace(description) || name.Contains(description, StringComparison.OrdinalIgnoreCase) ? name : $"{name} - {description}";
         }
 
+        // One direction only, like the bridge: the adapter's name contains the term. The reverse made a
+        // plain "Ethernet" adapter look ignored because the ignore word "vethernet" contains it, and
+        // saving then really ignored it.
         private static bool ContainsTerm(IEnumerable<string> terms, string adapterName) =>
-            terms.Any(term => adapterName.Contains(term, StringComparison.OrdinalIgnoreCase) || term.Contains(adapterName, StringComparison.OrdinalIgnoreCase));
+            terms.Any(term => adapterName.Contains(term, StringComparison.OrdinalIgnoreCase));
 
         private List<(string Name, string Role)> GetSelectedNetworkRoles() =>
             _pnlNetworkAdapters.Controls.OfType<Panel>()
