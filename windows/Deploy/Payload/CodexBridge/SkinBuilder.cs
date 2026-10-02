@@ -605,6 +605,11 @@ sealed class SkinBuilder
                 "IfMatch4=^none$", $"IfMatchAction4=[!SetVariable Top{n}Color \"0,0,0,0\"]",
             };
         }
+        if (key == "NetEthInMbps")
+        {
+            // -1: no cable traffic for a minute, hide the wired half of the legend.
+            return new[] { $"IfCondition={Measure(key)} < 0", "IfTrueAction=[!HideMeter NetScale]", "IfFalseAction=[!ShowMeter NetScale]" };
+        }
         if (key == "NetWifiActiveMode")
         {
             // No Wi-Fi in use: hide the wireless half of the legend instead of "Off DL/UL 0.0/0.0".

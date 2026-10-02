@@ -130,6 +130,7 @@ var networkPreviousAt = DateTime.UtcNow;
 // Last time Wi-Fi or the hotspot carried traffic: an adapter that is up but idle is reported as "Off",
 // so the skin hides its legend (same rule as the Linux bridge).
 DateTime? wirelessAt = null;
+DateTime? ethernetAt = null;
 // Per-app traffic; app icons go next to temps.txt so the skin can show them from @Resources.
 var appTraffic = new CodexBridge.AppTraffic(Path.Combine(Path.GetDirectoryName(outFile)!, "AppIcons"));
 var netPanel = new CodexBridge.NetPanel();
@@ -303,6 +304,12 @@ do
             wirelessAt = DateTime.UtcNow;
         }
         var wirelessShown = network.WifiActiveMode != "Off" && wirelessAt is { } at && DateTime.UtcNow - at <= TimeSpan.FromSeconds(60);
+        // Same rule for the wired legend: -1 hides it (a laptop on Wi-Fi has nothing to say about Ethernet).
+        if (network.EthInMbps + network.EthOutMbps >= 0.1)
+        {
+            ethernetAt = DateTime.UtcNow;
+        }
+        var wiredShown = ethernetAt is { } wiredAt && DateTime.UtcNow - wiredAt <= TimeSpan.FromSeconds(60);
         string Mbps(double value) => value.ToString("0.0", CultureInfo.InvariantCulture);
         var values = new Dictionary<string, string>
         {
@@ -317,13 +324,13 @@ do
             ["GPUFanPct"] = Round(gpuFanPct),
             ["CPUFan"] = Round(cpuFan),
             ["PSUFan"] = Round(psuFan),
-            ["NetEthInMbps"] = Mbps(network.EthInMbps),
-            ["NetEthOutMbps"] = Mbps(network.EthOutMbps),
+            ["NetEthInMbps"] = wiredShown ? Mbps(network.EthInMbps) : "-1",
+            ["NetEthOutMbps"] = wiredShown ? Mbps(network.EthOutMbps) : "-1",
             ["NetWifiInMbps"] = Mbps(network.WifiInMbps),
             ["NetWifiOutMbps"] = Mbps(network.WifiOutMbps),
             ["NetWifiApInMbps"] = Mbps(network.WifiApInMbps),
             ["NetWifiApOutMbps"] = Mbps(network.WifiApOutMbps),
-            ["NetWifiActiveMode"] = wirelessShown ? network.WifiActiveMode : "Off",
+            ["NetWifiActiveMode"] = !wirelessShown ? "Off" : network.WifiActiveMode == "WiFi" ? "Wi-Fi" : network.WifiActiveMode,
             ["NetWifiActiveInMbps"] = Mbps(wirelessShown ? network.WifiActiveInMbps : 0),
             ["NetWifiActiveOutMbps"] = Mbps(wirelessShown ? network.WifiActiveOutMbps : 0),
             ["NetWifiActiveDlMbps"] = Mbps(wirelessShown ? network.WifiActiveDlMbps : 0),
