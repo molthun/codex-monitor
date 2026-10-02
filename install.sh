@@ -2,7 +2,7 @@
 # CodexMonitor installer for Linux (GNOME).
 #
 #   From GitHub:  curl -fsSL https://raw.githubusercontent.com/molthun/codex-monitor/main/install.sh | bash
-#   A given release (e.g. a beta): ... | bash -s -- --version v2.2.0-beta.6  (or CODEX_MONITOR_VERSION=...)
+#   A given release (e.g. a beta): ... | bash -s -- --version v2.2.0-beta.1  (or CODEX_MONITOR_VERSION=...)
 #   From a clone: ./install.sh
 #
 # Runs linux/install.sh, downloading the project first when run from GitHub. Windows: install.ps1.
