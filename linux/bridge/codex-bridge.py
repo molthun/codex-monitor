@@ -960,9 +960,20 @@ def traffic_split(net, split_rates, procs, procs_ok, top_n, icons):
 # ---------------------------------------------------------------- updates
 
 def version_key(tag):
-    """'v2.1.0' / 'v2.0.0-11-g5724a8a' -> (2, 1, 0); None if it is not a version."""
-    match = re.match(r"v?(\d+(?:\.\d+)*)", tag or "")
-    return tuple(int(x) for x in match.group(1).split(".")) if match else None
+    """'v2.2.0' -> (2, 2, 0, 1); None if it is not a version.
+
+    The last part ranks builds of one version like the Windows updater: a pre-release
+    ('-beta.5', '-rc.1') is 0, the release itself 1, and a build made after the tag ('-main',
+    git describe's '-11-g5724a8a') 2. So a beta is offered its final release, and neither is
+    "updated" back to an older one.
+    """
+    match = re.match(r"v?(\d+(?:\.\d+){0,2})(?:-(.+))?", tag or "")
+    if not match:
+        return None
+    numbers = tuple((list(map(int, match.group(1).split("."))) + [0, 0])[:3])
+    suffix = match.group(2)
+    rank = 1 if not suffix else 0 if re.match(r"(alpha|beta|rc|pre)", suffix, re.I) else 2
+    return numbers + (rank,)
 
 
 class UpdateChecker:
@@ -993,7 +1004,8 @@ class UpdateChecker:
     def snapshot(self):
         remote = self.release
         local_key = version_key(self.local)
-        newer = remote and version_key(remote["tag"]) and (local_key is None or version_key(remote["tag"]) > local_key)
+        # Unknown local version (a copy without its tag): offer nothing rather than a downgrade.
+        newer = bool(remote and local_key and version_key(remote["tag"]) and version_key(remote["tag"]) > local_key)
         return {
             "Version": self.local,
             "UpdateMode": self.mode,
