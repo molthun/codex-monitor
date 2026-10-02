@@ -10,13 +10,20 @@ ASRock B460 Phantom Gaming 4 (fans via nct6775).
 ## How it works
 
 ```text
-hwmon (/sys/class/hwmon)  ─┐
-nvidia-smi (streaming)    ─┤
-/proc/stat, meminfo,      ─┼─> codex-bridge.py ──> $XDG_RUNTIME_DIR/codex-monitor/sensors.json
-    net/dev, diskstats    ─┘        (systemd --user service)             │
+hwmon (/sys/class/hwmon)   ─┐
+nvidia-smi / amdgpu / i915 ─┤
+/proc/stat, meminfo,       ─┼─> codex-bridge.py ──> $XDG_RUNTIME_DIR/codex-monitor/sensors.json
+    net/dev, diskstats     ─┘        (systemd --user service)    + inventory.json (hardware list)
+                                                                         │
                                                                          v
                                               GNOME Shell extension codex-monitor@molthun.github.io
 ```
+
+The extension is a small loader (`extension.js`) plus the widget (`widget.js`) and the
+settings window (`settings.js`). `install.sh` also copies the last two into a versioned
+folder under `~/.local/share/codex-monitor/widget/`; the loader imports a fresh copy
+whenever that changes, so updates apply **without logging out** (the widget restarts).
+Only a change of the loader itself needs one new login; the update notification says so.
 
 | Windows                               | Linux                                          |
 | ------------------------------------- | ---------------------------------------------- |
@@ -66,23 +73,81 @@ python3 ~/.local/share/codex-monitor/codex-bridge.py --dump
 
 GPU fan speed is shown in percent: `nvidia-smi` does not report RPM on Linux.
 
+## Settings
+
+Click the CodexMonitor icon in the top bar (GNOME's equivalent of a tray icon):
+**Settings**, **Check for updates**, **Restart widget** and a **Show widget** switch.
+The settings window (also under Extensions → CodexMonitor) has:
+
+- **Widget**: size (automatic by screen, 1080p / 2K / 4K, or a custom percentage),
+  fit to screen height, position, which sections to show, the top bar icon;
+- **Hardware**: which graphics card to show (NVIDIA, AMD, Intel, none), the fans to show
+  (any number, from any chip — board, AIO pump and radiator fans — named and ordered as you
+  like, with live RPM to tell them apart and a per-fan "warn when it stops"), extra
+  temperatures (liquid, board, drives) with their own thresholds, up to 6 drives and their names;
+- **Network**: Internet plan speeds, LAN full scale, number of top-process rows;
+- **Updates**: notify / install automatically / off, and **Check now** with **Install**.
+
+Changes apply immediately: the widget and the bridge both watch the config file.
+
+## Hardware support
+
+| | Load | Temperature | VRAM | Fan |
+| --- | --- | --- | --- | --- |
+| NVIDIA (`nvidia-smi`) | ✓ | ✓ | ✓ | % |
+| AMD (`amdgpu`) | ✓ | ✓ (edge) | ✓ | % |
+| Intel discrete (`xe` / `i915`) | – | ✓ | – | – |
+| Intel / other integrated | – | – | – | – |
+
+CPU temperature comes from `coretemp` (Intel) or `k10temp` (AMD). Board fans come from
+the SuperIO chips (`nct67xx`, `it87xx`, …); some boards need the kernel module first
+(`sudo modprobe nct6775` or `it87`). Which channel is which fan: in Settings → Hardware →
+Fans the speeds update live — load the CPU and watch its cooler speed up; on most boards
+`fan1…fan7` follow the header order in the BIOS. Channels at 0 RPM are usually empty headers.
+A graphics card at 0 RPM while cool is in its normal "0 RPM" mode and shown as idle; it only
+counts as a problem when the card is hot (60 °C and up).
+
+**Water cooling (AIO).** A pump on the board's AIO_PUMP / W_PUMP header is an ordinary fan
+channel: add it under Fans and name it "Pump" (keep "warn when it stops" on). Coolers with a
+USB link report pump speed, fans and **liquid temperature**:
+
+- with a kernel driver (NZXT Kraken, Corsair Commander Pro, Aquacomputer, …) they appear in
+  Fans and More temperatures directly, labelled by the driver ("Pump speed", "Coolant temp");
+- others (many Corsair iCUE, Lian Li, newer NZXT) through the bundled
+  [liquidctl](https://github.com/liquidctl/liquidctl) plugin: install liquidctl
+  (`sudo apt install liquidctl`) and they appear as `liquidctl-<model>`; some need
+  `liquidctl initialize all` once after boot.
+
+**USB fan hubs and other devices** are added by **sensor plugins**: a small program that
+prints what it measures as JSON. Drop it into `~/.config/codex-monitor/plugins/` and its
+fans and temperatures appear in Settings → Hardware. See [plugins/README.md](plugins/README.md).
+
+Liquid temperatures default to amber at 40 °C and red at 50 °C (chips: 70 / 85 °C); every
+extra temperature has its own thresholds. Fan bars are scaled per fan, so a pump at 2800 RPM
+does not peg its bar.
+
 ## Configuration
 
-`~/.config/codex-monitor/config.json` (created from `config.example.json`).
-The widget reloads it automatically; restart the bridge after bridge changes:
-`systemctl --user restart codex-monitor-bridge`.
+`~/.config/codex-monitor/config.json` (created from `config.example.json`), normally
+edited through the settings window.
 
 | Key | Meaning |
 | --- | --- |
-| `fans.chip` | hwmon chip name prefix (`nct`, `it87`, …) |
-| `fans.cpu` / `case` / `psu` | hwmon channel for each row (`fan1`…`fan7`) |
-| `disks` | up to three mount points for Disk I/O and Drives used |
+| `fans.list` | fans to show, in order: `[{"id": "nct6798/fan2", "name": "Front intake", "warn": true}]` (set in the settings window) |
+| `plugins.disabled` | sensor plugins switched off by name ([plugins/README.md](plugins/README.md)) |
+| `temps.list` | extra temperatures after CPU and GPU: `[{"id": "kraken3/temp1", "name": "Liquid", "warm": 40, "hot": 50}]` |
+| `fans.chip`, `fans.cpu` / `case` / `psu` | used while there is no `fans.list`: chip (`auto` or a name prefix) and its CPU / case / PSU channels |
+| `gpu.device` | `auto`, `none` or an id from `inventory.json` (`nvidia:0`, `drm:card1`) |
+| `disks` | up to six mount points for Disk I/O and Drives used |
 | `network.*` | interface classification (Ethernet / Wi-Fi / ignored) |
 | `widget.profile` | `Auto`, `1080p`, `2K` or `4K` |
 | `widget.autoProfileThresholds` | physical screen height for `2K` / `4K` in Auto mode |
 | `widget.diskLabels` | display names for mount points |
-| `update.check`, `update.intervalHours` | new-release check (notification with an Update button) |
-| `network.topProcesses` | how many processes the network panel lists |
+| `update.mode`, `update.intervalHours` | `notify` (notification with an Update button), `auto` or `off` |
+| `network.topProcesses` | how many applications the bridge reports (the widget shows `widget.topProcesses` of them) |
+| `widget.scale` | custom size in percent of the 1080p layout; `0` = by `profile` |
+| `widget.show.*` | `health`, `performance`, `temperatures`, `cooling`, `network`, `diskIO`, `drives` |
+| `widget.fitToScreen`, `visible`, `panelIcon`, `topProcesses`, `marginRight`, `marginTop` | as in the settings window |
 | `widget.internetDownMbps` / `internetUpMbps` | your Internet plan (asked by the installer; `0` = unknown, no tick): tick on the bars, graph scale step, amber when ≥ 90% used |
 | `widget.lanMbps` | full scale of the Download/Upload bars; `0` = link speed of the network card (Ethernet, or the Wi-Fi bitrate) |
 | `widget.diskIOMaxMBs`, `fanMaxRpm` | full-scale values for bars |
@@ -119,15 +184,16 @@ packet with nftables:
 
 ## Updates
 
-The bridge checks the latest GitHub release every 6 hours (`update.check`,
-`update.intervalHours`). When a newer version is out, GNOME shows a notification with
-**Update now** and **Release notes**, and the widget subtitle says so. Update now downloads
-the release and reruns `install.sh` (your config is kept); log out and back in afterwards,
-since GNOME Shell loads extension code only at login. If the Internet/LAN helper is
-installed and changed, the update asks for your password to refresh it.
+The bridge checks the latest GitHub release every 6 hours (`update.mode`,
+`update.intervalHours`); **Check for updates** in the top bar menu or the settings window
+asks right away. When a newer version is out, GNOME shows a notification with
+**Update now** and **Release notes** (or installs it directly in `auto` mode). The update
+downloads the release, reruns `install.sh` (your config is kept) and the widget restarts
+with the new version by itself. If the Internet/LAN helper is installed and changed, the
+update asks for your password to refresh it.
 
-Manual update or check: `~/.local/share/codex-monitor/update.sh` (latest) or
-`update.sh v2.1.0` (a specific release). Log: `~/.cache/codex-monitor/update.log`.
+Manual: `~/.local/share/codex-monitor/update.sh` (latest), `update.sh v2.1.0` (a specific
+release) or `update.sh --check`. Log: `~/.cache/codex-monitor/update.log`.
 
 ## Debugging
 

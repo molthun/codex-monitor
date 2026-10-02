@@ -4,29 +4,56 @@
     "outputFile": ""
   },
   "fans": {
-    "chip": "nct",
+    "chip": "auto",
     "cpu": "fan1",
     "case": "fan2",
-    "psu": "fan7"
+    "psu": ""
+  },
+  "temps": {
+    "list": []
+  },
+  "plugins": {
+    "disabled": []
+  },
+  "gpu": {
+    "device": "auto"
   },
   "disks": [
-    "/",
-    "/srv/ssd",
-    "/srv/storage"
+    "/"
   ],
   "network": {
-    "ignoreAdaptersContaining": ["lo", "docker", "veth", "br-", "virbr", "vnet", "tun", "tap", "wg", "tailscale", "zt"],
-    "wifiPrefixes": ["wl"],
-    "ethernetPrefixes": ["en", "eth"],
-    "topProcesses": 3
+    "ignoreAdaptersContaining": [
+      "lo",
+      "docker",
+      "veth",
+      "br-",
+      "virbr",
+      "vnet",
+      "tun",
+      "tap",
+      "wg",
+      "tailscale",
+      "zt"
+    ],
+    "wifiPrefixes": [
+      "wl"
+    ],
+    "ethernetPrefixes": [
+      "en",
+      "eth"
+    ],
+    "topProcesses": 5
   },
   "update": {
-    "check": true,
+    "mode": "notify",
     "intervalHours": 6
   },
   "widget": {
     "profile": "Auto",
-    "autoProfileThresholds": { "2K": 1400, "4K": 2000 },
+    "autoProfileThresholds": {
+      "2K": 1400,
+      "4K": 2000
+    },
     "marginRight": 24,
     "marginTop": 24,
     "internetDownMbps": 0,
@@ -34,9 +61,21 @@
     "lanMbps": 0,
     "diskIOMaxMBs": 1000,
     "diskLabels": {
-      "/": "System",
-      "/srv/ssd": "SSD",
-      "/srv/storage": "Storage"
+      "/": "System"
+    },
+    "scale": 0,
+    "fitToScreen": true,
+    "visible": true,
+    "panelIcon": true,
+    "topProcesses": 3,
+    "show": {
+      "health": true,
+      "performance": true,
+      "temperatures": true,
+      "cooling": true,
+      "network": true,
+      "diskIO": true,
+      "drives": true
     }
   }
 }

@@ -7,6 +7,9 @@ The network panel splits traffic into **Internet** (blue) and **LAN** (mint), sc
 your network card's link speed, marks your Internet plan and lists **which applications use the
 network right now**. When a new release is out you get a notification with an **Update now** button.
 
+Settings live behind an icon: the top bar icon on Linux (size, sections, graphics card, fans,
+drives, speeds, updates), the settings wizard on Windows. Updates apply without logging out.
+
 | Platform | Widget | Folder |
 | --- | --- | --- |
 | Windows 10/11 | Rainmeter skin + `CodexBridge.exe` (LibreHardwareMonitor) | [`windows/`](windows/README.md) |
@@ -27,6 +30,8 @@ curl -fsSL https://raw.githubusercontent.com/molthun/codex-monitor/main/install.
 ```
 
 From a clone, run `install.ps1` (Windows) or `./install.sh` (Linux) in the repository root.
+
+To install a particular release on Linux (for example a beta), add `-s -- --version <tag>` after `bash`, e.g. `--version v2.2.0`.
 
 ## Your speeds
 

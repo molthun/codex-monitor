@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-02
+
+- Linux: top bar icon (GNOME's tray) with Settings, Check for updates, Restart widget and a Show widget switch.
+- Linux: settings window (Extensions → CodexMonitor): widget size (automatic, 1080p/2K/4K or a custom percentage), fit to screen, position, which sections to show; graphics card, fan chip and channels with live RPM, up to 6 drives with names; Internet plan, LAN scale, top-process rows; update mode with Check now / Install. Changes apply immediately (the bridge restarts itself when the config changes).
+- Linux: updates apply without logging out. The extension is now a small loader that imports the widget from a versioned folder and restarts it when an update lands; only a change of the loader needs one new login, and the update notification says so.
+- Linux: AMD graphics (load, temperature, VRAM, fan via `amdgpu`) and Intel discrete graphics (temperature); "auto" picks NVIDIA, then the AMD card with the most VRAM, then Intel. Board fans: the "auto" chip is the one with the most fans (ITE `it87` boards work without configuration). Up to 6 drives. The bridge writes `inventory.json` (GPUs, fan chips, drives, link speed) for the settings window.
+- Linux: the example config no longer contains the author's drives and fan channels.
+- Linux: version checks rank a beta below its release (a beta is offered the final release, never an older one) and offer nothing when the installed version is unknown (a copy installed from an archive used to be offered v2.0.0). `install.sh --version <tag>` installs a given release, beta included.
+- Linux: any number of fans from any sensor chip, each with its own name, order and "warn when it stops" switch, edited in Settings → Hardware → Fans with live RPM (add, rename, reorder, remove). A graphics card in its 0 RPM mode shows "idle" and only raises FANS LOW when the card is hot. Older configs (`fans.chip` with cpu/case/psu channels) keep working.
+- Linux: water cooling. Extra temperatures (liquid, board, drives) can be added to the widget with their own amber/red thresholds (liquid defaults to 40/50 °C). AIO coolers with a kernel driver (NZXT Kraken, Corsair Commander, Aquacomputer) show their pump, fans and coolant temperature with driver labels; others work through liquidctl when it is installed. Fan bars scale per fan, so pumps do not peg the bar.
+- Linux: sensor plugins for hardware the bridge does not know (USB fan hubs, coolers without a kernel driver): any executable in `~/.config/codex-monitor/plugins/` that prints sensor chips as JSON; its fans and temperatures join the lists in the settings, which also show each plugin's status and switch it on or off. liquidctl support moved into the first bundled plugin. Format documented in `linux/plugins/README.md`, shared with a future Windows implementation.
+
 ## 2026-10-01
 
 - Linux: "Top processes" shows application names and icons from `.desktop` files instead of raw process names (`Yandex Browser` instead of `yandex_browser`), groups an app's processes into one row, names helpers by their host app (`claude · Visual Studio Code`) and system services by their systemd description.
