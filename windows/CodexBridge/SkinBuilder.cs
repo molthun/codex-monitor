@@ -5,6 +5,41 @@ using System.Text.Json.Nodes;
 namespace CodexBridge;
 
 /// <summary>
+/// Which sensors this PC has, as the bridge found them (inventory.json "available"). The skin leaves
+/// out rows for the rest; until the bridge has reported, everything is assumed present.
+/// </summary>
+sealed record Available(bool CpuTemp, bool Gpu, bool GpuTemp, bool Vram, bool GpuFan)
+{
+    public static readonly Available All = new(true, true, true, true, true);
+
+    /// <summary>Stamped into the skin and written by the bridge: the display watcher rebuilds the skin when they differ.</summary>
+    public string Signature(int fanCount) =>
+        $"{(CpuTemp ? 1 : 0)}{(Gpu ? 1 : 0)}{(GpuTemp ? 1 : 0)}{(Vram ? 1 : 0)}{(GpuFan ? 1 : 0)}-{fanCount}";
+
+    public JsonObject ToJson() => new()
+    {
+        ["cpuTemp"] = CpuTemp, ["gpu"] = Gpu, ["gpuTemp"] = GpuTemp, ["vram"] = Vram, ["gpuFan"] = GpuFan,
+    };
+
+    public static Available Read(string inventoryPath)
+    {
+        try
+        {
+            if (JsonNode.Parse(File.ReadAllText(inventoryPath))?["available"] is JsonObject a)
+            {
+                bool Flag(string key) => a[key]?.GetValue<bool>() ?? true;
+                return new Available(Flag("cpuTemp"), Flag("gpu"), Flag("gpuTemp"), Flag("vram"), Flag("gpuFan"));
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            // No inventory yet: show everything until the bridge reports.
+        }
+        return All;
+    }
+}
+
+/// <summary>
 /// Generates the Rainmeter skin (CodexMonitor.ini) from the settings, replacing the fixed 1080p/4K
 /// presets: any size, only the sections the user wants, 1–6 drives, any number of fans and extra
 /// temperatures, and a size that fits the screen height. Layout is computed in 1080p units
@@ -24,15 +59,17 @@ sealed class SkinBuilder
     readonly double _k;
     readonly string _bridgeExe;
     readonly List<string> _keys;
+    readonly Available _hw;
     int _screenHeight;
     readonly StringBuilder _measures = new();
     readonly StringBuilder _meters = new();
     int _y;
     int _bottom;
 
-    SkinBuilder(AppConfig config, List<FanEntry> fans, double scale, string bridgeExe)
+    SkinBuilder(AppConfig config, List<FanEntry> fans, double scale, string bridgeExe, Available hw)
     {
         _config = config;
+        _hw = hw;
         _fans = fans;
         _temps = config.Temps;
         _disks = config.Disks;
@@ -86,16 +123,17 @@ sealed class SkinBuilder
 
     /// <summary>The skin text, shrunk to fit <paramref name="maxHeight"/> pixels when the config asks for it.</summary>
     public static (string Skin, int Width, int Height, double Scale) Build(AppConfig config, List<FanEntry> fans,
-        int screenHeight, string bridgeExe)
+        int screenHeight, string bridgeExe, Available? hw = null)
     {
+        hw ??= Available.All;
         var scale = ProfileScale(config, screenHeight);
         var maxHeight = screenHeight - 2 * config.MarginTop - 48; // leave room for the taskbar
-        var naturalHeight = new SkinBuilder(config, fans, 1, bridgeExe).Layout();
+        var naturalHeight = new SkinBuilder(config, fans, 1, bridgeExe, hw).Layout();
         if (config.FitToScreen && naturalHeight * scale > maxHeight && maxHeight > 200)
         {
             scale = maxHeight / (double)naturalHeight;
         }
-        var builder = new SkinBuilder(config, fans, scale, bridgeExe) { _screenHeight = screenHeight };
+        var builder = new SkinBuilder(config, fans, scale, bridgeExe, hw) { _screenHeight = screenHeight };
         var height = builder.Layout();
         return (builder.Text(height), builder.S(Width), builder.S(height), scale);
     }
@@ -109,6 +147,18 @@ sealed class SkinBuilder
 
     string Measure(string key) => $"MeasureT_{key}";
     int Index(string key) => _keys.IndexOf(key) + 1;
+
+    // Only what this PC has: no GPU rows without a graphics card, no temperatures without sensors.
+    bool GpuRows => _hw.Gpu;
+    bool VramRow => _hw.Gpu && _hw.Vram;
+    bool CpuTempRow => _hw.CpuTemp;
+    bool GpuTempRow => _hw.Gpu && _hw.GpuTemp;
+    bool GpuFanRow => _hw.Gpu && _hw.GpuFan;
+    bool ShowTemps => _config.ShowSection("temperatures") && (CpuTempRow || GpuTempRow || _temps.Count > 0);
+    bool ShowCooling => _config.ShowSection("cooling") && (_fans.Count > 0 || GpuFanRow);
+    bool HasFans => _fans.Count > 0 || GpuFanRow;
+    // RAM alone would repeat the RAM row: the strip needs a temperature or a fan.
+    bool ShowHealth => _config.ShowSection("health") && (CpuTempRow || GpuTempRow || HasFans);
 
     // Text from the config inside skin options: no line breaks, no #variable# or [section] syntax.
     static string Clean(string text) => text.Replace('\r', ' ').Replace('\n', ' ').Replace("#", "＃").Replace("[", "(").Replace("]", ")");
@@ -219,7 +269,7 @@ sealed class SkinBuilder
         _bottom = 61;
         Header();
         _y = 74;
-        if (_config.ShowSection("health"))
+        if (ShowHealth)
         {
             Health();
             _bottom = 120;
@@ -231,12 +281,12 @@ sealed class SkinBuilder
             Performance();
             first = false;
         }
-        if (_config.ShowSection("temperatures"))
+        if (ShowTemps)
         {
             Temperatures(first);
             first = false;
         }
-        if (_config.ShowSection("cooling"))
+        if (ShowCooling)
         {
             Cooling(first);
             first = false;
@@ -272,18 +322,29 @@ sealed class SkinBuilder
         Meter("HealthBg", "Meter=Shape",
             $"Shape=Rectangle #Pad#,{S(74)},#BarW#,{S(46)},{S(3)} | Fill Color [#HealthFill] | StrokeWidth 1 | Stroke Color 78,205,196,32",
             "DynamicVariables=1");
-        var cells = new[]
+        var cells = new List<(string Id, string Text, string Color, string Measure)>();
+        if (CpuTempRow)
         {
-            ("HealthCPU", "CPU", "#OK#", Measure("CPU")), ("HealthGPU", "GPU", "#GPU#", Measure("GPUCore")),
-            ("HealthRAM", "RAM", "#OK#", "MeasureRAMPct"), ("HealthFans", "FANS OK", "#OK#", ""),
-        };
-        for (var i = 0; i < cells.Length; i++)
+            cells.Add(("HealthCPU", "CPU", "#OK#", Measure("CPU")));
+        }
+        if (GpuTempRow)
+        {
+            cells.Add(("HealthGPU", "GPU", "#GPU#", Measure("GPUCore")));
+        }
+        cells.Add(("HealthRAM", "RAM", "#OK#", "MeasureRAMPct"));
+        if (HasFans)
+        {
+            cells.Add(("HealthFans", "FANS OK", "#OK#", ""));
+        }
+        // Four cells are 76 px wide, 99 px apart; fewer cells share the same width.
+        var step = 396.0 / cells.Count;
+        for (var i = 0; i < cells.Count; i++)
         {
             var (id, text, color, measure) = cells[i];
-            var cellX = Pad + 12 + i * 99;
-            Meter(id, "Meter=String", $"X={S(cellX + 38)}", $"Y={S(80)}", "FontFace=#Font#", $"FontSize={F(9)}", $"FontColor={color}",
+            var cellX = Pad + 12 + i * step;
+            Meter(id, "Meter=String", $"X={S(cellX + (step - 23) / 2)}", $"Y={S(80)}", "FontFace=#Font#", $"FontSize={F(9)}", $"FontColor={color}",
                 "AntiAlias=1", "StringAlign=Center", measure.Length > 0 ? $"MeasureName={measure}" : "", $"Text={text}");
-            Meter($"{id}Bar", "Meter=Image", $"X={S(cellX)}", $"Y={S(104)}", $"W={S(76)}", $"H={S(3)}", $"SolidColor={color}");
+            Meter($"{id}Bar", "Meter=Image", $"X={S(cellX)}", $"Y={S(104)}", $"W={S(step - 23)}", $"H={S(3)}", $"SolidColor={color}");
         }
     }
 
@@ -294,10 +355,16 @@ sealed class SkinBuilder
             "0,229,255,255 ; 0.0 | 0,145,234,255 ; 1.0", historyMeasure: "MeasureCPU");
         Row("RAM", "RAM used", new[] { "MeasureName=MeasureRAMPct", "Text=%1%" }, "[MeasureRAMPct:] / 100",
             "69,201,151,255 ; 0.0 | 0,230,118,255 ; 1.0", "RAMState");
-        Row("GPU", "GPU load", new[] { "MeasureName=MeasureGPUValue", "Text=%1%" }, "[MeasureGPUValue:] / 100",
-            "151,136,255,255 ; 0.0 | 224,195,252,255 ; 1.0", historyMeasure: "MeasureGPUValue");
-        Row("VRAM", "VRAM used", new[] { "MeasureName=MeasureVRAMUsedGB", "MeasureName2=MeasureVRAMTotalGB", "Text=%1 GB / %2 GB", "NumOfDecimals=1" },
-            $"[{Measure("VRAMPct")}:] / 100", "151,136,255,255 ; 0.0 | 224,195,252,255 ; 1.0");
+        if (GpuRows)
+        {
+            Row("GPU", "GPU load", new[] { "MeasureName=MeasureGPUValue", "Text=%1%" }, "[MeasureGPUValue:] / 100",
+                "151,136,255,255 ; 0.0 | 224,195,252,255 ; 1.0", historyMeasure: "MeasureGPUValue");
+        }
+        if (VramRow)
+        {
+            Row("VRAM", "VRAM used", new[] { "MeasureName=MeasureVRAMUsedGB", "MeasureName2=MeasureVRAMTotalGB", "Text=%1 GB / %2 GB", "NumOfDecimals=1" },
+                $"[{Measure("VRAMPct")}:] / 100", "151,136,255,255 ; 0.0 | 224,195,252,255 ; 1.0");
+        }
         _y += SectionGap;
     }
 
@@ -309,10 +376,16 @@ sealed class SkinBuilder
             $"Rectangle (#BarW# * {D(warm / 100)}),0,(#BarW# * {D((hot - warm) / 100)}),#BarH# | Fill Color 255,193,94,30 | StrokeWidth 0",
             $"Rectangle (#BarW# * {D(hot / 100)}),0,(#BarW# * {D(Math.Max(0, 100 - hot) / 100)}),#BarH# | Fill Color 255,113,113,38 | StrokeWidth 0",
         };
-        Row("CPUTemp", "CPU temp", new[] { $"MeasureName={Measure("CPU")}", "Text=%1°C" }, $"[{Measure("CPU")}:] / 100",
-            "0,229,255,255 ; 0.0 | 0,145,234,255 ; 1.0", "CPUState", Zones(65, 80), Measure("CPU"));
-        Row("GPUTemp", "GPU temp", new[] { $"MeasureName={Measure("GPUCore")}", "Text=%1°C" }, $"[{Measure("GPUCore")}:] / 100",
-            "0,229,255,255 ; 0.0 | 0,145,234,255 ; 1.0", "GPUState", Zones(70, 83), Measure("GPUCore"));
+        if (CpuTempRow)
+        {
+            Row("CPUTemp", "CPU temp", new[] { $"MeasureName={Measure("CPU")}", "Text=%1°C" }, $"[{Measure("CPU")}:] / 100",
+                "0,229,255,255 ; 0.0 | 0,145,234,255 ; 1.0", "CPUState", Zones(65, 80), Measure("CPU"));
+        }
+        if (GpuTempRow)
+        {
+            Row("GPUTemp", "GPU temp", new[] { $"MeasureName={Measure("GPUCore")}", "Text=%1°C" }, $"[{Measure("GPUCore")}:] / 100",
+                "0,229,255,255 ; 0.0 | 0,145,234,255 ; 1.0", "GPUState", Zones(70, 83), Measure("GPUCore"));
+        }
         for (var i = 0; i < _temps.Count; i++)
         {
             var t = _temps[i];
@@ -333,8 +406,11 @@ sealed class SkinBuilder
             Row(key, _fans[i].Name, new[] { $"MeasureName={Measure(key)}", "Text=%1 RPM", "NumOfDecimals=0" },
                 $"[{Measure(key)}:] / [Measure{key}Peak:]", "0,229,255,255 ; 0.0 | 0,145,234,255 ; 1.0", $"{key}State");
         }
-        Row("GPUFan", "GPU fans", new[] { $"MeasureName={Measure("GPUFan")}", $"MeasureName2={Measure("GPUFanPct")}", "Text=%1 RPM / %2%" },
-            $"[{Measure("GPUFanPct")}:] / 100", "151,136,255,255 ; 0.0 | 224,195,252,255 ; 1.0", "GPUFanState");
+        if (GpuFanRow)
+        {
+            Row("GPUFan", "GPU fans", new[] { $"MeasureName={Measure("GPUFan")}", $"MeasureName2={Measure("GPUFanPct")}", "Text=%1 RPM / %2%" },
+                $"[{Measure("GPUFanPct")}:] / 100", "151,136,255,255 ; 0.0 | 224,195,252,255 ; 1.0", "GPUFanState");
+        }
         _y += SectionGap;
     }
 
@@ -468,7 +544,7 @@ sealed class SkinBuilder
         }
         MeasureSection("MeasureVRAMUsedGB", "Measure=Calc", $"Formula={Measure("VRAMUsedMB")} / 1024", "MinValue=0");
         MeasureSection("MeasureVRAMTotalGB", "Measure=Calc", $"Formula={Measure("VRAMTotalMB")} / 1024", "MinValue=0");
-        if (_config.ShowSection("performance"))
+        if (_config.ShowSection("performance") && VramRow)
         {
             // No graphics card (or no memory sensors): n/a instead of "-0.0 GB / -0.0 GB".
             MeasureSection("StateVRAM", "Measure=Calc", $"Formula={Measure("VRAMTotalMB")}",
@@ -477,12 +553,12 @@ sealed class SkinBuilder
         }
 
         // Health and color states.
-        var health = _config.ShowSection("health");
-        var temps = _config.ShowSection("temperatures");
-        ThresholdState("CPUState", Measure("CPU"), 65, 80, health ? "HealthCPU" : null, "CPU {0} %1°C",
-            valueMeter: temps ? "ValueCPUTemp" : null, valueText: "%1°C");
-        ThresholdState("GPUState", Measure("GPUCore"), 70, 83, health ? "HealthGPU" : null, "GPU {0} %1°C", "#GPU#",
-            temps ? "ValueGPUTemp" : null, "%1°C");
+        var health = ShowHealth;
+        var temps = ShowTemps;
+        ThresholdState("CPUState", Measure("CPU"), 65, 80, health && CpuTempRow ? "HealthCPU" : null, "CPU {0} %1°C",
+            valueMeter: temps && CpuTempRow ? "ValueCPUTemp" : null, valueText: "%1°C");
+        ThresholdState("GPUState", Measure("GPUCore"), 70, 83, health && GpuTempRow ? "HealthGPU" : null, "GPU {0} %1°C", "#GPU#",
+            temps && GpuTempRow ? "ValueGPUTemp" : null, "%1°C");
         ThresholdState("RAMState", "MeasureRAMPct", 85, 95, health ? "HealthRAM" : null, "RAM {0} %1%");
         for (var i = 0; i < _temps.Count; i++)
         {
@@ -562,7 +638,7 @@ sealed class SkinBuilder
             {
                 lowParts.Add($"(({m} >= 0) && ({m} < 200))");
             }
-            if (!_config.ShowSection("cooling"))
+            if (!ShowCooling)
             {
                 continue;
             }
@@ -575,17 +651,20 @@ sealed class SkinBuilder
         // A graphics card at 0 RPM while cool is in its normal 0 RPM mode; hot and stopped is a problem.
         var gpuHotStopped = $"(({Measure("GPUCore")} >= 60) && ({Measure("GPUFan")} < 300) && ({Measure("GPUFanPct")} <= 0) && " +
             $"(({Measure("GPUFan")} >= 0) || ({Measure("GPUFanPct")} >= 0)))";
-        lowParts.Add(gpuHotStopped);
-        var low = string.Join(" || ", lowParts);
-        if (_config.ShowSection("cooling"))
+        if (GpuFanRow)
+        {
+            lowParts.Add(gpuHotStopped);
+        }
+        var low = lowParts.Count > 0 ? string.Join(" || ", lowParts) : "0";
+        if (ShowCooling && GpuFanRow)
         {
             GpuFanState(gpuHotStopped);
         }
-        if (_config.ShowSection("health"))
+        if (ShowHealth && HasFans)
         {
             // FANS N/A when no fan reports at all (no fan sensors, e.g. a virtual machine): OK would be a guess.
             var known = string.Join(" || ", Enumerable.Range(1, _fans.Count).Select(n => $"({Measure($"Fan{n}")} >= 0)")
-                .Append($"({Measure("GPUFan")} >= 0) || ({Measure("GPUFanPct")} >= 0)"));
+                .Concat(GpuFanRow ? new[] { $"({Measure("GPUFan")} >= 0) || ({Measure("GPUFanPct")} >= 0)" } : Array.Empty<string>()));
             MeasureSection("StateHealthFans", "Measure=Calc", "Formula=1",
                 $"IfCondition={low}",
                 "IfTrueAction=[!SetOption HealthFans Text \"FANS LOW\"][!SetOption HealthFans FontColor \"#Hot#\"][!SetOption HealthFansBar SolidColor \"#Hot#\"][!SetVariable HealthFill \"255,113,113,34\"]",
@@ -645,7 +724,9 @@ sealed class SkinBuilder
         Section(header, "MsBlur", "Measure=Plugin", "Plugin=FrostedGlass", "Type=Acrylic", "Border=All");
         Section(header, "Metadata", "Name=CodexMonitor", "Author=Codex", "Information=Generated by CodexBridge --build-skin from config.json; edits are overwritten.", "Version=3.0",
             // The display watcher rebuilds the skin when the primary screen height changes.
-            $"ScreenHeight={_screenHeight}");
+            $"ScreenHeight={_screenHeight}",
+            // ...and when the bridge finds other sensors than these (first run, PawnIO installed, new GPU).
+            $"Hardware={_hw.Signature(_fans.Count)}");
 
         var variables = new List<string>
         {

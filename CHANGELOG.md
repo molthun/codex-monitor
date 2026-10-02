@@ -21,6 +21,7 @@
 - Windows: a missing sensor shows as N/A / n/a instead of a believable 0 (the bridge writes `-1`, as it already did for fans and extra temperatures): health strip, CPU/GPU/extra temperatures, VRAM and GPU fans. A graphics card without fan sensors no longer raises FANS LOW.
 - Windows: the generated skin is saved as UTF-16 LE, the Unicode encoding Rainmeter reads; UTF-8 showed "°C" as "Â°C" and would garble non-ASCII names.
 - Windows: the wireless half of the network legend is hidden while no Wi-Fi is in use.
+- Windows: the widget only shows what this PC has. No graphics card: no GPU load, VRAM, GPU temperature or GPU fan rows; no CPU temperature sensor: no CPU temperature row; no fans: no Cooling section; the health strip keeps only the cells it can fill and disappears when only RAM is left. The bridge reports the sensors it found and the display watcher rebuilds the skin when that changes (first run, after installing PawnIO). N/A remains for a sensor that drops out while running.
 - Windows: in a virtual machine (Parallels, VMware, Hyper-V, VirtualBox, QEMU) the Sensor access card says that the VM has no temperature or fan sensors instead of suggesting a driver, and the health strip shows FANS N/A when no fan reports at all.
 ## 2026-10-01
 

@@ -65,9 +65,10 @@ if (args.Any(a => string.Equals(a, "--build-skin", StringComparison.OrdinalIgnor
     var target = GetArgValue(args, "--out") ?? throw new ArgumentException("--build-skin needs --out <path to CodexMonitor.ini>");
     var screenHeight = int.TryParse(GetArgValue(args, "--screen-height"), out var h) ? h : 1080;
     var temps = ReadConfig(configPath).BridgeOutputFile ?? Path.Combine(Path.GetDirectoryName(target)!, @"@Resources\temps.txt");
-    var fans = CodexBridge.SkinBuilder.FanList(skinConfig, Path.Combine(Path.GetDirectoryName(temps)!, "inventory.json"));
+    var inventoryPath = Path.Combine(Path.GetDirectoryName(temps)!, "inventory.json");
+    var fans = CodexBridge.SkinBuilder.FanList(skinConfig, inventoryPath);
     var (skin, width, height, scale) = CodexBridge.SkinBuilder.Build(skinConfig, fans, screenHeight,
-        Environment.ProcessPath ?? "CodexBridge.exe");
+        Environment.ProcessPath ?? "CodexBridge.exe", CodexBridge.Available.Read(inventoryPath));
     Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(target))!);
     // UTF-16 LE with BOM: the only Unicode encoding Rainmeter reads in skins. UTF-8 is read as ANSI,
     // which turned "°C" into "Â°C" and would garble non-ASCII fan and drive names.
@@ -120,6 +121,8 @@ var tempList = appConfig.Temps;
 var inventoryFile = Path.Combine(Path.GetDirectoryName(outFile)!, "inventory.json");
 var inventoryAt = DateTime.MinValue;
 List<string>? fileKeys = null;
+// Sensors seen during this run; once seen they stay, so a missed read never reshapes the skin.
+var seen = new CodexBridge.Available(false, false, false, false, false);
 
 var lastErrorLog = DateTime.MinValue;
 var networkPrevious = new Dictionary<string, (long Received, long Sent)>(StringComparer.OrdinalIgnoreCase);
@@ -287,6 +290,9 @@ do
             network.EthOutMbps + network.WifiOutMbps + network.WifiApOutMbps,
             linkMbps, apps, appsOk, config.NetPanel, ReadUpdateTag(updateStatusFile));
 
+        seen = new CodexBridge.Available(seen.CpuTemp || cpuTemp.HasValue, seen.Gpu || gpu is not null,
+            seen.GpuTemp || gpuCore.HasValue, seen.Vram || vramTotalMb > 0, seen.GpuFan || gpuFan.HasValue || gpuFanPct.HasValue);
+
         string Mbps(double value) => value.ToString("0.0", CultureInfo.InvariantCulture);
         var values = new Dictionary<string, string>
         {
@@ -328,7 +334,7 @@ do
         if (DateTime.UtcNow - inventoryAt > TimeSpan.FromSeconds(2))
         {
             SafeWriteAllText(inventoryFile, CodexBridge.HardwareSensors.Inventory(sensors, fanList, linkMbps,
-                CodexBridge.HardwareSensors.Status(computer, sensors, openError)).ToJsonString());
+                CodexBridge.HardwareSensors.Status(computer, sensors, openError), seen).ToJsonString());
             inventoryAt = DateTime.UtcNow;
         }
 

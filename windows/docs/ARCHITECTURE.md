@@ -134,6 +134,12 @@ Active file (generated, do not edit by hand):
 the bridge uses, and the temps.txt key order is defined once in `TempsFile.cs`. The skin records the
 screen height it was built for in `[Metadata] ScreenHeight`.
 
+Rows exist only for sensors this PC has: the bridge writes what it found to `inventory.json`
+(`available`: CPU temperature, graphics card, GPU temperature, VRAM, GPU fans; once seen during a run,
+a sensor stays) together with a stamp (`skin`). The skin carries the stamp it was built with in
+`[Metadata] Hardware`, and the display watcher rebuilds the skin when they differ (first run, PawnIO
+installed, another graphics card). Without a temperature or fan the health strip is left out too.
+
 The skin reads `temps.txt` using WebParser measures and combines those values with Rainmeter native measures:
 
 - CPU usage;

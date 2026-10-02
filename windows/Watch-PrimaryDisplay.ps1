@@ -499,16 +499,39 @@ function Get-AutoProfileMode {
     return $compactProfile
 }
 
+# The bridge writes the sensors it found to inventory.json ("skin" stamp); the skin carries the stamp
+# it was built with. They differ on the first run, after installing PawnIO or changing the graphics card.
+function Test-SkinHardwareChanged {
+    param([string]$SkinIni)
+
+    $outputFile = if ($config.bridge.outputFile) { $config.bridge.outputFile } else { Join-Path (Split-Path -Parent $SkinIni) "@Resources\temps.txt" }
+    $inventoryPath = Join-Path (Split-Path -Parent $outputFile) "inventory.json"
+    if (-not (Test-Path -LiteralPath $inventoryPath) -or -not (Test-Path -LiteralPath $SkinIni)) { return $false }
+    try {
+        $wanted = (Get-Content -LiteralPath $inventoryPath -Raw | ConvertFrom-Json).skin
+    }
+    catch {
+        return $false
+    }
+    if (-not $wanted) { return $false }
+    $line = Get-Content -LiteralPath $SkinIni | Where-Object { $_ -match "^Hardware=(.*)$" } | Select-Object -First 1
+    $built = if ($line -match "^Hardware=(.*)$") { $Matches[1].Trim() } else { "" }
+    # One rebuild per new stamp: never loop if the rebuilt skin still disagrees.
+    if ($built -eq $wanted -or $script:skinHardwareTried -eq $wanted) { return $false }
+    $script:skinHardwareTried = $wanted
+    return $true
+}
+
 function Switch-ProfileIfNeeded {
     param($ScreenBounds)
 
-    if ($config.profiles.auto -eq $false) { return $false }
-
-    # The skin is generated for a screen height (stamped in its [Metadata]); rebuild it when that changes.
+    # The skin is generated for a screen height and for the sensors the bridge found (both stamped in
+    # its [Metadata]); rebuild it when either changes.
     $skinPath = Get-RainmeterSkinPath
     $skinIni = Join-Path $skinPath "CodexMonitor\CodexMonitor.ini"
     $builtFor = Get-IniNumber -Path $skinIni -Key "ScreenHeight" -Default 0
-    if ($builtFor -eq $ScreenBounds.Height) { return $false }
+    $heightChanged = ($config.profiles.auto -ne $false) -and ($builtFor -ne $ScreenBounds.Height)
+    if (-not $heightChanged -and -not (Test-SkinHardwareChanged -SkinIni $skinIni)) { return $false }
     $mode = Get-AutoProfileMode -ScreenHeight $ScreenBounds.Height
 
     $switcher = Join-Path $InstallRoot "Deploy\Switch-WidgetSize.ps1"

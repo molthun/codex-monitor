@@ -105,7 +105,7 @@ static class HardwareSensors
     /// inventory.json. Sensor ids are LibreHardwareMonitor identifiers ("/lpc/nct6798d/fan/1").
     /// </summary>
     public static JsonObject Inventory(IReadOnlyList<SimpleSensor> sensors, IReadOnlyList<FanEntry> fanList, double? linkMbps,
-        JsonObject status)
+        JsonObject status, Available available)
     {
         JsonArray Chips(Func<SimpleSensor, bool> pick, string key) => new(sensors.Where(pick)
             .GroupBy(s => (s.HardwareIdentifier, s.HardwareName))
@@ -149,6 +149,9 @@ static class HardwareSensors
             ["linkMbps"] = linkMbps,
             ["plugins"] = new JsonArray(),
             ["status"] = status,
+            // What the skin shows rows for, and the stamp the display watcher compares with the skin's.
+            ["available"] = available.ToJson(),
+            ["skin"] = available.Signature(fanList.Count),
             ["Timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
         };
     }
