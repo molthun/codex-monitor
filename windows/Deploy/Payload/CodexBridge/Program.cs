@@ -695,14 +695,8 @@ static (double EthInMbps, double EthOutMbps, double WifiInMbps, double WifiOutMb
     var wifiApUp = false;
     var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-    var ignoreList = config.NetworkIgnoreAdapters ?? new List<string>
-    {
-        "hyper-v", "virtual switch", "virtual switch extension", "virtual filtering platform",
-        "wsl", "teredo", "teredo tunneling", "wan miniport", "qos packet scheduler",
-        "wfp native mac layer", "wfp 802.3 mac layer", "lightweight filter",
-        "native wifi filter driver", "virtual wifi filter driver", "pseudo-interface",
-        "vswitch", "vethernet", "bluetooth"
-    };
+    // Built-in service adapters (CodexBridge.AdapterFilter) plus the user's own words, if any.
+    var userIgnoreWords = CodexBridge.AdapterFilter.UserWords(config.NetworkIgnoreAdapters);
     var wifiApList = config.NetworkWifiApNames ?? new List<string> { "wi-fi direct", "wifi direct", "hotspot" };
     var wifiList = config.NetworkWifiNames ?? new List<string> { "wi-fi", "wifi", "wireless", "wlan", "беспровод" };
     var ethList = config.NetworkEthernetNames ?? new List<string> { "ethernet", "i219-v", "intel" };
@@ -720,8 +714,7 @@ static (double EthInMbps, double EthOutMbps, double WifiInMbps, double WifiOutMb
         var lower = text.ToLowerInvariant();
 
         config.NetworkAdapterRoles.TryGetValue(name, out var chosenRole);
-        if (chosenRole is "Ignore" ||
-            (chosenRole is null && ignoreList.Any(ignore => lower.Contains(ignore, StringComparison.OrdinalIgnoreCase))))
+        if (chosenRole is "Ignore" || (chosenRole is null && CodexBridge.AdapterFilter.IsServiceAdapter(nic, userIgnoreWords)))
         {
             continue;
         }

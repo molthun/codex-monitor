@@ -39,14 +39,7 @@
     "E:"
   ],
   "network": {
-    "ignoreAdaptersContaining": [
-      "hyper-v",
-      "virtual switch",
-      "wsl",
-      "teredo",
-      "wan miniport",
-      "bluetooth"
-    ],
+    "ignoreAdaptersContaining": [],
     "wifiApNamesContaining": [
       "wi-fi direct",
       "wifi direct"
