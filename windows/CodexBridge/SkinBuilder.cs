@@ -447,12 +447,12 @@ sealed class SkinBuilder
                 $"Y={S(_y)}", "FontColor=#LAN#", "Text=%1");
             Meter($"Value{dir}Wan", "Meter=String", "MeterStyle=StyleValue", $"MeasureName={Measure($"Net{dir}WanText")}",
                 $"X=([Value{dir}Lan:X] - {S(8)})", $"Y={S(_y)}", "FontColor=#WAN#", "Text=%1", "DynamicVariables=1");
-            // One bar: Internet segment, LAN segment after it, tick at the Internet plan.
+            // One bar: Internet segment, LAN segment after it, a faint 1 px tick at the Internet plan.
             Meter($"Bar{dir}", "Meter=Shape", "X=#BarX#", $"Y={S(_y + BarOffset)}",
                 "Shape=Rectangle 0,0,#BarW#,#BarH#,#BarR# | Fill Color #Track# | StrokeWidth 0",
                 $"Shape2=Rectangle 0,0,(#BarW# * [{Measure($"Net{dir}TotalPct")}:] / 100),#BarH#,#BarR# | Fill LinearGradient LANGrad | StrokeWidth 0",
                 $"Shape3=Rectangle 0,0,(#BarW# * [{Measure($"Net{dir}WanPct")}:] / 100),#BarH#,#BarR# | Fill LinearGradient WANGrad | StrokeWidth 0",
-                $"Shape4=Rectangle ((#BarW# * [{Measure($"NetPlan{dir}Pct")}:] / 100) - 1),0,(([{Measure($"NetPlan{dir}Pct")}:] > 0) ? 2 : 0),#BarH# | Fill Color #PlanTick{dir}# | StrokeWidth 0",
+                $"Shape4=Rectangle (#BarW# * [{Measure($"NetPlan{dir}Pct")}:] / 100),0,(([{Measure($"NetPlan{dir}Pct")}:] > 0) ? 1 : 0),#BarH# | Fill Color #PlanTick{dir}# | StrokeWidth 0",
                 "WANGrad=90 | 41,121,255,255 ; 0.0 | 88,179,255,255 ; 1.0",
                 "LANGrad=90 | 0,191,165,255 ; 0.0 | 29,233,182,255 ; 1.0",
                 "DynamicVariables=1");
@@ -737,7 +737,7 @@ sealed class SkinBuilder
             "Track=255,255,255,30", "CPU=0,229,255,255", "RAM=69,201,151,255", "GPU=151,136,255,255", "NET=88,179,255,255",
             "DISK=116,214,132,255", "Warn=255,113,113,255", "OK=0,229,255,255", "Warm=255,193,94,255", "Hot=255,113,113,255",
             "WAN=88,179,255,255", "LAN=29,233,182,255", "WANFill=88,179,255,150", "LANFill=29,233,182,150",
-            "PlanTick=255,255,255,170", "PlanTickDown=255,255,255,170", "PlanTickUp=255,255,255,170",
+            "PlanTick=255,255,255,50", "PlanTickDown=255,255,255,50", "PlanTickUp=255,255,255,50",
             "DiskIOMax=1000", "HealthFill=78,205,196,6",
         };
         // State variables start neutral; the State measures set them every update.
