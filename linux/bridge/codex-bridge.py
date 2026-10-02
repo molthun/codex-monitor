@@ -501,6 +501,9 @@ def memory():
 
 # ---------------------------------------------------------------- network
 
+WIRELESS_IDLE_S = 60
+
+
 class Network:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -509,6 +512,7 @@ class Network:
         self.modes = {}
         self.bitrates = {}
         self.modes_at = 0
+        self.wireless_at = None  # last time Wi-Fi or the hotspot carried traffic
 
     def _kind(self, iface):
         low = iface.lower()
@@ -582,6 +586,12 @@ class Network:
         elif any(k == "wifi" for k, _, _ in counters.values()):
             mode, a_in, a_out, dl, ul = "WiFi", wifi[0], wifi[1], wifi[0], wifi[1]
         else:
+            mode, a_in, a_out, dl, ul = "Off", 0.0, 0.0, 0.0, 0.0
+        # An adapter that is up but carries nothing is not worth a legend: "Off" until it does,
+        # and again after a quiet minute.
+        if a_in + a_out >= 0.01:
+            self.wireless_at = now
+        if mode != "Off" and (self.wireless_at is None or now - self.wireless_at > WIRELESS_IDLE_S):
             mode, a_in, a_out, dl, ul = "Off", 0.0, 0.0, 0.0, 0.0
         speeds = [read_int(f"/sys/class/net/{i}/speed") if k == "eth" else self._wifi_bitrate(i)
                   for i, (k, _, _) in counters.items()]
