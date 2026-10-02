@@ -580,7 +580,7 @@ namespace CodexBridge
                 null when _inventory is null => ("The bridge has not reported yet. If this stays, choose Restart in the tray menu.", true),
                 null => ("This bridge version does not report sensor access.", false),
                 _ when status["virtualMachine"]?.GetValue<string>() is { Length: > 0 } vm && !Flag("cpuTemp") =>
-                    ($"This is a virtual machine ({vm}): it has no temperature or fan sensors, so the widget shows them as N/A.", false),
+                    ($"This is a virtual machine ({vm}): it has no temperature or fan sensors, so the widget leaves them out.", false),
                 _ when status["error"]?.GetValue<string>() is { Length: > 0 } error => ($"LibreHardwareMonitor did not start: {error}", true),
                 _ when !Flag("admin") => ("The bridge runs without administrator rights: no CPU temperatures or board fans. Run Install-CodexMonitor.cmd again.", true),
                 _ when !Flag("pawnIO") => ("The PawnIO driver is not installed: no CPU temperatures or board fans.", true),
