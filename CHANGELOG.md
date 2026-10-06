@@ -1,9 +1,14 @@
 # Changelog
 
-## 2026-10-02 (2.2.1)
+## 2.2.1 — 2026-10-06
 
-- Release notes give the Linux install command for that release next to the Windows installer.
-- Windows: service network adapters are skipped by built-in rules instead of the "Advanced ignore words" field, which is gone from the settings: loopback and tunnels by type; Hyper-V/WSL virtual switches, VirtualBox/VMware host-only adapters, Bluetooth and VPNs (WireGuard, OpenVPN/TAP, Tailscale, ZeroTier) by name. The old default list is ignored when read back: its "hyper-v" also matched the real network card of a Hyper-V virtual machine, and half of its words named filter drivers that never show up as adapters. Words a user added by hand still apply; Ignore on an adapter in the list covers the rest.
+- Windows: prepare downloads before stopping the working installation; restore the previous installation and active skin when an update fails. Record the new version only after deployment succeeds.
+- Windows: reload watcher settings without signing out, including update mode, position margins and polling interval. Fix update icon copying and the tray's Restart widget action.
+- Windows: parse NVIDIA telemetry per selected model; ambiguous identical models keep LibreHardwareMonitor readings instead of mixing cards.
+- Windows and Linux: do not inflate LAN estimates with unattributed UDP/QUIC traffic; scale TCP rates down only when they exceed interface totals.
+- Linux: generate the systemd service for the actual XDG data/config directories, with escaped paths.
+- Include config and version in Windows backups; refresh deployment and contributor documentation.
+- Pin the .NET SDK and package dependencies, keep NuGet lock files, and run syntax, payload mirror, regression and build checks on PRs and before releases.
 
 ## 2026-10-02
 

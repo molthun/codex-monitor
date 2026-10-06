@@ -208,3 +208,11 @@ Only build a zip/release artifact when restoring a fresh Windows install or publ
 - Every sensor key change updates `docs\SENSOR_CONTRACT.md`.
 - Every deployment/install change updates public docs and any local restore docs if such a folder is being maintained.
 - Do not remove old backups until the current state has been tested on both 1080p and 4K.
+
+## Automated checks
+
+Use the .NET SDK version in `global.json`. Run `python tests/check_sources.py`, `pwsh -NoProfile -File tests/test_windows.ps1`, and `dotnet run --project tests/CodexBridge.Tests/CodexBridge.Tests.csproj -c Release` from the repository root. On Linux, also run `python3 -m unittest discover -s tests -p 'test_*.py'`.
+
+Build with `dotnet build windows/CodexBridge/CodexBridge.csproj -c Release -p:EnableWindowsTargeting=true -p:RestoreLockedMode=true -warnaserror`. When intentionally updating NuGet dependencies, restore without locked mode, review `packages.lock.json`, and synchronize `windows/Deploy/Payload/CodexBridge`.
+
+PowerShell regressions mock downloads and Windows process commands while exercising the updater and rollback. They do not replace testing the real Windows task permissions, Rainmeter, tray and hardware sensors.

@@ -17,7 +17,14 @@ rm -rf "$DATA/codex-monitor/plugins"
 mkdir -p "$DATA/codex-monitor/plugins" "$CONF/plugins"
 install -m755 "$SRC"/plugins/*.py "$DATA/codex-monitor/plugins/"
 # Release tag for the update check: set by update.sh, or taken from a git checkout.
-VERSION="${CODEX_MONITOR_VERSION:-$(git -C "$SRC" describe --tags 2>/dev/null || echo unknown)}"
+# Source checkouts carry the next project version; releases pass their exact tag.
+if [[ -n "${CODEX_MONITOR_VERSION:-}" ]]; then
+    VERSION="$CODEX_MONITOR_VERSION"
+elif [[ -f "$SRC/../VERSION" ]]; then
+    VERSION="v$(tr -d '\r\n' < "$SRC/../VERSION")-main"
+else
+    VERSION="$(git -C "$SRC" describe --tags 2>/dev/null || echo unknown)"
+fi
 echo "$VERSION" > "$DATA/codex-monitor/VERSION"
 echo "==> Version $VERSION"
 
@@ -55,7 +62,21 @@ PY
 fi
 
 echo "==> systemd user service"
-install -Dm644 "$SRC/systemd/codex-monitor-bridge.service" "$UNIT_DIR/codex-monitor-bridge.service"
+mkdir -p "$UNIT_DIR"
+# systemd does not expand XDG variables in ExecStart. Render the installed path and
+# pass custom XDG locations to the bridge, including paths with spaces or percent signs.
+python3 - "$SRC/systemd/codex-monitor-bridge.service" "$UNIT_DIR/codex-monitor-bridge.service" "$DATA" "${XDG_CONFIG_HOME:-$HOME/.config}" <<'PYUNIT'
+import pathlib, sys
+source, target, data, config = sys.argv[1:]
+def quote(value, command=False):
+    if command:
+        value = value.replace('$', '$$')
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%').replace('\n', '\\n').replace('\r', '\\r') + '"'
+unit = pathlib.Path(source).read_text()
+unit = unit.replace('%h/.local/share/codex-monitor/codex-bridge.py', quote(str(pathlib.Path(data) / 'codex-monitor/codex-bridge.py'), command=True))
+unit = unit.replace('[Service]\n', '[Service]\nEnvironment=' + quote('XDG_DATA_HOME=' + data) + '\nEnvironment=' + quote('XDG_CONFIG_HOME=' + config) + '\n')
+pathlib.Path(target).write_text(unit)
+PYUNIT
 systemctl --user daemon-reload
 systemctl --user enable --now codex-monitor-bridge.service
 systemctl --user restart codex-monitor-bridge.service

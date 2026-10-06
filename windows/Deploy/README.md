@@ -4,13 +4,13 @@ This folder contains everything needed to restore the Rainmeter desktop monitor 
 
 ## What is included
 
-- `Payload\RainmeterSkin\CodexMonitor\CodexMonitor.ini` - active Rainmeter skin.
-- `Payload\CodexBridge\` - bridge source plus the bundled self-contained `CodexBridge.exe`.
+- `CodexBridge.exe --build-skin` generates the active Rainmeter skin from `config.json`.
+- `Payload\CodexBridge\` - bridge source; the installer obtains the matching self-contained `CodexBridge.exe` from GitHub Releases.
 - `Payload\@Resources\temps.example.txt` - placeholder sensor output file.
 - `Payload\RainmeterLayout-CodexMonitor.ini` - current Rainmeter placement and desktop behavior.
 - `Install-CodexMonitor.ps1` - install/restore script.
 - `Configure-CodexMonitor.ps1` - launches the graphical settings wizard through `CodexBridge.exe --settings`.
-- `Backup-CodexMonitor.ps1` - creates a timestamped backup zip.
+- `Backup-CodexMonitor.ps1` - creates a timestamped backup zip including `config.json`, the version and the active skin.
 - `Uninstall-CodexMonitor.ps1` - removes the scheduled task and optionally files.
 
 ## Requirements after reinstall
@@ -64,7 +64,7 @@ powershell -ExecutionPolicy Bypass -File C:\CodexMonitor\Deploy\Uninstall-CodexM
 
 ## Notes
 
-- The bridge writes sensor/network values to `C:\CodexMonitor\@Resources\temps.txt`.
+- The bridge writes sensor/network values to the active skin’s `@Resources\temps.txt`; the installer records that path in `config.json`.
 - Rainmeter reads that file once per second.
 - The bridge scheduled task runs with highest privileges because low-level hardware sensors often require elevated access.
-- If the widget appears in the wrong place after reinstall, adjust it once in Rainmeter, then run `Backup-CodexMonitor.ps1` or refresh this deploy kit.
+- Set widget margins in Settings. The display watcher keeps it positioned against the primary monitor.

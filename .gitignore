@@ -7,3 +7,5 @@ __pycache__/
 *.swp
 .DS_Store
 Thumbs.db
+tests/**/bin/
+tests/**/obj/

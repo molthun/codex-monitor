@@ -13,6 +13,51 @@
 # Linux: install.sh.
 param([string]$Version = $env:CODEXMONITOR_VERSION)
 
+# StageRoot must contain a complete installation on the same volume as InstallRoot.
+# Downloading and validation happen before entering this transaction.
+function Invoke-CodexInstallTransaction {
+    param(
+        [Parameter(Mandatory)][string]$InstallRoot,
+        [Parameter(Mandatory)][string]$StageRoot,
+        [Parameter(Mandatory)][scriptblock]$Stop,
+        [Parameter(Mandatory)][scriptblock]$Apply,
+        [Parameter(Mandatory)][scriptblock]$Recover
+    )
+
+    $ErrorActionPreference = "Stop"
+    if (-not (Test-Path -LiteralPath $StageRoot -PathType Container)) {
+        throw "Prepared installation was not found: $StageRoot"
+    }
+    $backup = "$InstallRoot-backup-$([guid]::NewGuid().ToString('N'))"
+    $movedOld = $false
+    $movedNew = $false
+    try {
+        & $Stop
+        if (Test-Path -LiteralPath $InstallRoot) {
+            Move-Item -LiteralPath $InstallRoot -Destination $backup
+            $movedOld = $true
+        }
+        Move-Item -LiteralPath $StageRoot -Destination $InstallRoot
+        $movedNew = $true
+        & $Apply
+    }
+    catch {
+        $failure = $_
+        # Stop any new processes before moving their executables out of the way.
+        try { & $Stop } catch { Write-Warning "Could not stop the failed installation: $_" }
+        if ($movedNew) {
+            Move-Item -LiteralPath $InstallRoot -Destination $StageRoot
+        }
+        if ($movedOld) {
+            Move-Item -LiteralPath $backup -Destination $InstallRoot
+        }
+        try { & $Recover } catch { Write-Warning "Files restored; process recovery failed: $_" }
+        throw $failure
+    }
+    # Keep the previous working installation for manual recovery.
+    if ($movedOld) { Write-Host "Previous installation kept at $backup" }
+}
+
 $ErrorActionPreference = "Stop"
 $repo = "molthun/codex-monitor"
 $Version = "$Version".Trim()
@@ -62,20 +107,6 @@ $tempExtract = Join-Path $env:TEMP "codex-monitor-bootstrap-extract"
 if (Test-Path -LiteralPath $tempZip) { Remove-Item -LiteralPath $tempZip -Force }
 if (Test-Path -LiteralPath $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force }
 
-$backupDir = $null
-if (Test-Path -LiteralPath $installDir) {
-    Write-Host "$installDir already exists. Backing up existing folder..." -ForegroundColor Yellow
-    # A running bridge, tray icon or watcher keeps files open, and Windows refuses to rename the folder.
-    Get-ScheduledTask -TaskName "CodexMonitor Bridge Elevated" -ErrorAction SilentlyContinue | Stop-ScheduledTask -ErrorAction SilentlyContinue
-    Get-Process CodexBridge -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -like "*Watch-PrimaryDisplay.ps1*" } |
-        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
-    Start-Sleep -Seconds 1
-    $backupDir = "$installDir-backup-$(Get-Date -Format 'yyyyMMddHHmmss')"
-    Rename-Item -Path $installDir -NewName (Split-Path $backupDir -Leaf)
-}
-
 $localWindows = if ($PSScriptRoot) { Join-Path $PSScriptRoot "windows" } else { "" }
 if ($localWindows -and (Test-Path -LiteralPath (Join-Path $localWindows "Deploy"))) {
     Write-Host "Installing from the local checkout $PSScriptRoot..." -ForegroundColor Yellow
@@ -110,38 +141,65 @@ else {
     if (-not (Test-Path -LiteralPath (Join-Path $windowsDir "Deploy"))) { $windowsDir = $extractedDir.FullName }
 }
 
-New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-Copy-Item -Path "$windowsDir\*" -Destination $installDir -Recurse -Force
 
-# Keep the user's settings across a reinstall.
-if ($backupDir -and (Test-Path -LiteralPath (Join-Path $backupDir "config.json"))) {
-    Copy-Item -LiteralPath (Join-Path $backupDir "config.json") -Destination (Join-Path $installDir "config.json") -Force
-    Write-Host "Kept your settings from the previous installation." -ForegroundColor Green
-}
+# Prepare the complete release before stopping or moving the working installation.
+$stage = "$installDir-stage-$([guid]::NewGuid().ToString('N'))"
+try {
+    New-Item -ItemType Directory -Path $stage | Out-Null
+    Get-ChildItem -LiteralPath $windowsDir -Force | Copy-Item -Destination $stage -Recurse -Force
+    $payloadExe = Join-Path $stage "Deploy\Payload\CodexBridge\CodexBridge.exe"
+    if ($tag) {
+        New-Item -ItemType Directory -Force -Path (Split-Path $payloadExe) | Out-Null
+        Write-Host "Downloading CodexBridge.exe for $tag..." -ForegroundColor Yellow
+        Invoke-WebRequest -Uri "https://github.com/$repo/releases/download/$tag/CodexBridge.exe" -OutFile $payloadExe -UseBasicParsing
+    } elseif (-not (Test-Path -LiteralPath $payloadExe)) {
+        $builtExe = Join-Path $windowsDir "CodexBridge\bin\Release\net10.0-windows\win-x64\publish\CodexBridge.exe"
+        if (Test-Path -LiteralPath $builtExe) {
+            Copy-Item -LiteralPath $builtExe -Destination $payloadExe -Force
+        } else {
+            $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest" -Headers $headers -TimeoutSec 20
+            $tag = $release.tag_name
+            Invoke-WebRequest -Uri "https://github.com/$repo/releases/download/$tag/CodexBridge.exe" -OutFile $payloadExe -UseBasicParsing
+        }
+    }
+    if (-not (Test-Path -LiteralPath $payloadExe) -or (Get-Item -LiteralPath $payloadExe).Length -lt 1MB) {
+        throw "Prepared CodexBridge.exe is missing or too small."
+    }
+    $setupScript = Join-Path $stage "Deploy\Setup-CodexMonitor.ps1"
+    if (-not (Test-Path -LiteralPath $setupScript)) { throw "Setup launcher was not found." }
 
-if ($tag) {
-    # The bridge built for this release, and the version the auto-updater compares against.
-    $payloadExe = Join-Path $installDir "Deploy\Payload\CodexBridge\CodexBridge.exe"
-    New-Item -ItemType Directory -Force -Path (Split-Path $payloadExe) | Out-Null
-    Write-Host "Downloading CodexBridge.exe for $tag..." -ForegroundColor Yellow
-    Invoke-WebRequest -Uri "https://github.com/$repo/releases/download/$tag/CodexBridge.exe" -OutFile $payloadExe -UseBasicParsing
-    Set-Content -LiteralPath (Join-Path $installDir ".local_version") -Value $tag -Encoding UTF8
-}
-
-# Clean up temp files
-if (Test-Path -LiteralPath $tempZip) { Remove-Item -LiteralPath $tempZip -Force }
-if (Test-Path -LiteralPath $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force }
-
-Write-Host "Repository downloaded and staged at $installDir!" -ForegroundColor Green
-
-# Run the setup script in the cloned directory
-$setupScript = Join-Path $installDir "Deploy\Setup-CodexMonitor.ps1"
-if (Test-Path -LiteralPath $setupScript) {
-    Write-Host "Handing off control to the setup launcher..." -ForegroundColor Cyan
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $setupScript
-} else {
-    Write-Error "Setup launcher script not found at $setupScript."
-    Write-Host "Press any key to exit..."
-    [void][System.Console]::ReadKey()
-    exit 1
+    $existingConfig = Join-Path $installDir "config.json"
+    $taskName = "CodexMonitor Bridge Elevated"
+    if (Test-Path -LiteralPath $existingConfig) {
+        $oldConfig = Get-Content -LiteralPath $existingConfig -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($oldConfig.bridge.taskName) { $taskName = $oldConfig.bridge.taskName }
+    }
+    $stopInstalledProcesses = {
+        Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue | Stop-ScheduledTask -ErrorAction SilentlyContinue
+        Get-Process CodexBridge -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -like "*Watch-PrimaryDisplay.ps1*" } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+        Start-Sleep -Seconds 1
+    }
+    # Embedded below because this bootstrap also installs older tags without the helper file.
+    Invoke-CodexInstallTransaction -InstallRoot $installDir -StageRoot $stage -Stop {
+        & $stopInstalledProcesses
+        if ((Test-Path -LiteralPath $stage) -and (Test-Path -LiteralPath $existingConfig)) {
+            Copy-Item -LiteralPath $existingConfig -Destination (Join-Path $stage "config.json") -Force
+        }
+    } -Apply {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $installDir "Deploy\Setup-CodexMonitor.ps1")
+        if ($LASTEXITCODE -ne 0) { throw "Setup failed with exit code $LASTEXITCODE." }
+        if ($tag) { Set-Content -LiteralPath (Join-Path $installDir ".local_version") -Value $tag -Encoding UTF8 }
+    } -Recover {
+        if (Test-Path -LiteralPath (Join-Path $installDir "Deploy\Install-CodexMonitor.ps1")) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $installDir "Deploy\Install-CodexMonitor.ps1")
+            if ($LASTEXITCODE -ne 0) { throw "Restoring the previous deployment failed." }
+        }
+    }
+} finally {
+    if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+    if (Test-Path -LiteralPath $tempZip) { Remove-Item -LiteralPath $tempZip -Force }
+    if (Test-Path -LiteralPath $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force }
 }

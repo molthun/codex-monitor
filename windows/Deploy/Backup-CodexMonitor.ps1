@@ -9,6 +9,8 @@ $backupDir = Join-Path $BackupRoot "CodexMonitor-$stamp"
 New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
 
 $items = @(
+    "C:\CodexMonitor\config.json",
+    "C:\CodexMonitor\.local_version",
     "C:\CodexMonitor\CodexMonitor.ini",
     "C:\CodexMonitor\CodexBridge\Program.cs",
     "C:\CodexMonitor\CodexBridge\CodexBridge.csproj",

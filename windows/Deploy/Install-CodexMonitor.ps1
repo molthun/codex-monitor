@@ -175,6 +175,9 @@ $bridgeExe = Join-Path $bridgeTarget "CodexBridge.exe"
 $watcherScript = Join-Path $InstallRoot "Watch-PrimaryDisplay.ps1"
 $configTarget = Join-Path $InstallRoot "config.json"
 $rainmeterExe = if ($config.rainmeter.executable) { $config.rainmeter.executable } else { "C:\Program Files\Rainmeter\Rainmeter.exe" }
+if (-not (Test-Path -LiteralPath $rainmeterExe)) {
+    throw "Rainmeter executable was not found: $rainmeterExe"
+}
 $taskName = if ($config.bridge.taskName) { $config.bridge.taskName } else { "CodexMonitor Bridge Elevated" }
 $watcherShortcutName = if ($config.startup.watcherShortcutName) { $config.startup.watcherShortcutName } else { "CodexMonitor Display Watcher.lnk" }
 $watcherShortcut = Join-Path ([Environment]::GetFolderPath("Startup")) $watcherShortcutName
@@ -264,6 +267,7 @@ if (Test-Path -LiteralPath $sizeSwitcher) {
     } else {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sizeSwitcher -Mode $profileMode -InstallRoot $InstallRoot
     }
+    if ($LASTEXITCODE -ne 0) { throw "Building the initial skin failed with exit code $LASTEXITCODE." }
 }
 
 if (-not (Test-Path -LiteralPath (Join-Path $skinResourcesTarget "temps.txt"))) {
@@ -369,6 +373,7 @@ if (-not $NoStart) {
     for ($i = 0; $i -lt 20 -and -not (Test-Path -LiteralPath $inventory); $i++) { Start-Sleep -Milliseconds 500 }
     if (Test-Path -LiteralPath $sizeSwitcher) {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $sizeSwitcher -InstallRoot $InstallRoot -ConfigPath $configTarget | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Building the hardware skin failed with exit code $LASTEXITCODE." }
     }
     # Through Explorer, so the tray runs as the signed-in user, not elevated like this installer.
     Start-Process -FilePath "explorer.exe" -ArgumentList "`"$trayShortcut`""
