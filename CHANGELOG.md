@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.2.2 — Unreleased
+## 2.2.2 — 2026-10-07
 
 - Windows: share automatic service-adapter filtering between the bridge and settings. Skip host virtual switches, VPN tunnels, Bluetooth PAN and loopback while keeping Hyper-V/VMware guest network cards.
 - Windows: remove the Advanced ignore words field; migrate recognized legacy default lists and preserve explicit custom exclusions. A saved adapter role overrides automatic filtering.
