@@ -31,3 +31,5 @@ metadata = json.loads((ROOT / "linux/extension/codex-monitor@molthun.github.io/m
 assert metadata["version-name"] == version, "GNOME version differs from VERSION"
 assert f'"Version={version}"' in (primary / "SkinBuilder.cs").read_text(), "Skin version differs from VERSION"
 print(f"Project version checks passed: {version}")
+
+assert not (ROOT / "windows/Deploy/Payload/config.json").exists(), "Use the public config.example.json instead of a local payload config"

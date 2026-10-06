@@ -66,7 +66,7 @@ namespace CodexBridge
         private static readonly Color TextMuted = Color.FromArgb(166, 178, 188);
         private static readonly Color Accent = Color.FromArgb(0, 210, 230);
         private static readonly Color AccentSoft = Color.FromArgb(74, 226, 181);
-        private static readonly string[] NetworkRoles = { "Auto", "Ethernet", "Wi-Fi", "Wi-Fi hotspot", "Ignore" };
+        private static readonly string[] NetworkRoles = AdapterFilter.Roles;
         private static readonly (string Key, string Title)[] SectionTitles =
         {
             ("health", "Health strip"), ("performance", "Performance"), ("temperatures", "Temperatures"),
@@ -374,7 +374,7 @@ namespace CodexBridge
         private Panel BuildNetworkPage()
         {
             var page = Page();
-            var network = CreateCard(page, 16, 264, "Network adapters", "Real network adapters only: virtual switches (Hyper-V, WSL), VPN tunnels and Bluetooth are skipped automatically. Auto detects each one; Ignore leaves an adapter out.");
+            var network = CreateCard(page, 16, 264, "Network adapters", "Choose how to count each adapter, including disconnected ones. Service adapters are hidden automatically unless they have a saved role.");
             _pnlNetworkAdapters = new FlowLayoutPanel { Location = new Point(18, 76), Size = new Size(668, 170), BackColor = Color.Transparent, FlowDirection = FlowDirection.TopDown, WrapContents = false };
             network.Controls.Add(_pnlNetworkAdapters);
 
@@ -752,7 +752,8 @@ namespace CodexBridge
         }
 
         private static List<string> StringList(JsonObject? parent, string key) =>
-            (parent?[key] as JsonArray)?.Select(n => n?.GetValue<string>()).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!).ToList()
+            (parent?[key] as JsonArray)?.OfType<JsonValue>().Select(n => n.TryGetValue<string>(out var text) ? text : null)
+                .Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!).ToList()
             ?? new List<string>();
 
         private async void BtnSave_Click(object? sender, EventArgs e)
@@ -805,18 +806,14 @@ namespace CodexBridge
             var ethernet = StringList(network, "ethernetNamesContaining");
             var wifi = StringList(network, "wifiNamesContaining");
             var wifiAp = StringList(network, "wifiApNamesContaining");
-            var roles = new JsonObject();
-            foreach (var (name, role) in GetSelectedNetworkRoles())
+            var roles = AdapterFilter.SaveRoles(network["adapterRoles"] as JsonObject, GetSelectedNetworkRoles());
+            foreach (var (name, _) in GetSelectedNetworkRoles())
             {
                 // Older versions saved a role by adding the adapter's name to these word lists, which
                 // then matched other adapters too ("Ethernet" in "vethernet"); roles live in adapterRoles now.
-                foreach (var list in new[] { ethernet, wifi, wifiAp, ignoreTerms })
+                foreach (var list in new[] { ethernet, wifi, wifiAp })
                 {
                     list.RemoveAll(x => string.Equals(x, name, StringComparison.OrdinalIgnoreCase));
-                }
-                if (role != "Auto")
-                {
-                    roles[name] = role;
                 }
             }
             // Dropping adapter names also drops built-in words equal to common names ("Ethernet", "Wi-Fi").
@@ -853,14 +850,17 @@ namespace CodexBridge
         private void PopulateNetworkAdapters()
         {
             _pnlNetworkAdapters.Controls.Clear();
+            var savedRoles = _config.Root["network"]?["adapterRoles"] as JsonObject;
+            string? SavedRole(string name) => savedRoles?.FirstOrDefault(r => string.Equals(r.Key, name, StringComparison.OrdinalIgnoreCase))
+                .Value is JsonValue value && value.TryGetValue<string>(out var role) ? AdapterFilter.NormalizeRole(role) : null;
             var adapters = NetworkInterface.GetAllNetworkInterfaces()
-                .Where(nic => nic.OperationalStatus == OperationalStatus.Up && !AdapterFilter.IsServiceAdapter(nic))
+                .Where(nic => !AdapterFilter.IsServiceAdapter(nic) || SavedRole(nic.Name) is not null)
                 .OrderBy(nic => nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ? 0 : 1)
                 .ThenBy(nic => nic.Name)
                 .ToList();
             if (adapters.Count == 0)
             {
-                _pnlNetworkAdapters.Controls.Add(new Label { Text = "No active network adapters detected.", Size = new Size(610, 28), ForeColor = TextMuted });
+                _pnlNetworkAdapters.Controls.Add(new Label { Text = "No network adapters detected.", Size = new Size(610, 28), ForeColor = TextMuted });
                 return;
             }
             _pnlNetworkAdapters.AutoScroll = adapters.Count > 4;
@@ -888,7 +888,8 @@ namespace CodexBridge
                 {
                     continue;
                 }
-                var chosen = roles?.FirstOrDefault(r => string.Equals(r.Key, adapterName, StringComparison.OrdinalIgnoreCase)).Value?.GetValue<string>();
+                var value = roles?.FirstOrDefault(r => string.Equals(r.Key, adapterName, StringComparison.OrdinalIgnoreCase)).Value;
+                var chosen = value is JsonValue json && json.TryGetValue<string>(out var text) ? AdapterFilter.NormalizeRole(text) : null;
                 role.SelectedItem = chosen is not null && NetworkRoles.Contains(chosen) ? chosen : "Auto";
             }
         }

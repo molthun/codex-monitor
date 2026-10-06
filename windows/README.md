@@ -149,3 +149,9 @@ e.g. on a 1366×768 laptop. Hiding sections makes it shorter as well.
 Downloads are prepared before the bridge stops. Failed updates restore the previous installation and active skin. Successful updates keep the old installation in a sibling `CodexMonitor-backup-*` folder; it can be removed after verifying the update.
 
 For multiple identical NVIDIA cards, LibreHardwareMonitor remains the telemetry source because matching `nvidia-smi` models would be ambiguous.
+
+### Network adapters
+
+Settings lists physical adapters, including disconnected ones. Service adapters (host virtual switches, VPN tunnels, Bluetooth PAN and loopback) are hidden automatically unless an explicit role was saved for them. Guest NICs inside Hyper-V and VMware are counted normally.
+
+Choose Auto, Ethernet, Wi-Fi, Wi-Fi hotspot or Ignore per adapter. Saved roles take priority over automatic rules and survive disconnection. Custom ignore words remain available through `network.ignoreAdaptersContaining` in manually edited config; recognized old default presets are migrated automatically.

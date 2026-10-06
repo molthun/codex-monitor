@@ -7,6 +7,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../windows/CodexBridge/AdapterFilter.cs" Link="AdapterFilter.cs" />
     <Compile Include="../../windows/CodexBridge/NetPanel.cs" Link="NetPanel.cs" />
     <Compile Include="../../windows/CodexBridge/NvidiaTelemetry.cs" Link="NvidiaTelemetry.cs" />
     <Compile Include="../../windows/CodexBridge/AppConfig.cs" Link="AppConfig.cs" />

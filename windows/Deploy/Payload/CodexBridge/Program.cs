@@ -497,7 +497,7 @@ static void ApplyConfig(BridgeConfig config, string path)
     {
         if (network.TryGetProperty("ignoreAdaptersContaining", out var ignore) && ignore.ValueKind == JsonValueKind.Array)
         {
-            config.NetworkIgnoreAdapters = ignore.EnumerateArray().Select(x => x.GetString()!).ToList();
+            config.NetworkIgnoreAdapters = ignore.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToList();
         }
         if (network.TryGetProperty("wifiApNamesContaining", out var wifiAp) && wifiAp.ValueKind == JsonValueKind.Array)
         {
@@ -699,8 +699,9 @@ static (double EthInMbps, double EthOutMbps, double WifiInMbps, double WifiOutMb
         var text = $"{name} {description}";
         var lower = text.ToLowerInvariant();
 
-        config.NetworkAdapterRoles.TryGetValue(name, out var chosenRole);
-        if (chosenRole is "Ignore" || (chosenRole is null && CodexBridge.AdapterFilter.IsServiceAdapter(nic, userIgnoreWords)))
+        config.NetworkAdapterRoles.TryGetValue(name, out var savedRole);
+        var chosenRole = CodexBridge.AdapterFilter.NormalizeRole(savedRole);
+        if (CodexBridge.AdapterFilter.ShouldIgnore(nic.NetworkInterfaceType, name, description, chosenRole, userIgnoreWords))
         {
             continue;
         }

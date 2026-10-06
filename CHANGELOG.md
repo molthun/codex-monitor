@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.2.2 — Unreleased
+
+- Windows: share automatic service-adapter filtering between the bridge and settings. Skip host virtual switches, VPN tunnels, Bluetooth PAN and loopback while keeping Hyper-V/VMware guest network cards.
+- Windows: remove the Advanced ignore words field; migrate recognized legacy default lists and preserve explicit custom exclusions. A saved adapter role overrides automatic filtering.
+- Windows: list disconnected physical adapters and preserve roles of adapters absent from the settings list when saving. Normalize explicit Auto, role casing and invalid values consistently.
+- Remove the obsolete hardware-specific payload config; public defaults live in `windows/config.example.json`.
+- Add adapter filtering, legacy migration and role-preservation regressions. Future release notes include a Linux install command for the exact release tag.
+
 ## 2.2.1 — 2026-10-06
 
 - Windows: prepare downloads before stopping the working installation; restore the previous installation and active skin when an update fails. Record the new version only after deployment succeeds.

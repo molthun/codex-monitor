@@ -1,11 +1,12 @@
 using System.Net.NetworkInformation;
+using System.Text.Json.Nodes;
 
 namespace CodexBridge;
 
 /// <summary>
 /// Which network adapters are service adapters rather than a real link: counting them would add
 /// a second copy of the real card's traffic (Hyper-V/WSL virtual switches, VPN tunnels) or traffic
-/// that never leaves the PC. The bridge skips them and the settings window does not list them.
+/// that never leaves the PC. The bridge skips them automatically; an explicit role can override that choice.
 /// </summary>
 static class AdapterFilter
 {
@@ -18,7 +19,6 @@ static class AdapterFilter
     {
         "hyper-v virtual",          // host side: "Hyper-V Virtual Ethernet Adapter", "...Switch Extension Adapter"
         "vethernet",                // "vEthernet (Default Switch)", "vEthernet (WSL)"
-        "wsl",
         "virtualbox host-only",
         "vmware virtual ethernet",  // host side of VMware's VMnet1/VMnet8
         "bluetooth",                // Bluetooth personal area network
@@ -36,7 +36,7 @@ static class AdapterFilter
 
     /// <summary>
     /// The list older versions wrote into config.json as "ignoreAdaptersContaining" and showed as
-    /// "Advanced ignore words". Ignored when read back: some were too broad ("hyper-v" matched the
+    /// "Advanced ignore words". Removed from recognized legacy presets: some were too broad ("hyper-v" matched the
     /// real card of a Hyper-V virtual machine), the rest are covered by <see cref="BuiltInWords"/>.
     /// </summary>
     static readonly HashSet<string> OldDefaults = new(StringComparer.OrdinalIgnoreCase)
@@ -47,19 +47,55 @@ static class AdapterFilter
         "vethernet", "bluetooth",
     };
 
-    /// <summary>The user's own words from config.json, without the defaults older versions saved there.</summary>
-    public static List<string> UserWords(IEnumerable<string>? configured) =>
-        (configured ?? Enumerable.Empty<string>()).Select(w => w.Trim()).Where(w => w.Length > 0 && !OldDefaults.Contains(w)).ToList();
+    public static readonly string[] Roles = { "Auto", "Ethernet", "Wi-Fi", "Wi-Fi hotspot", "Ignore" };
 
-    /// <summary>Loopback and tunnels by type, the rest by <see cref="BuiltInWords"/> and the user's words.</summary>
-    public static bool IsServiceAdapter(NetworkInterface nic, IEnumerable<string>? userWords = null)
+    /// <summary>Unknown roles and explicit Auto use automatic detection.</summary>
+    public static string? NormalizeRole(string? role) =>
+        Roles.Skip(1).FirstOrDefault(known => string.Equals(known, role?.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Remove old defaults only when the known legacy preset is present. A short
+    /// explicit list such as ["hyper-v"] must still be respected as a user choice.
+    /// </summary>
+    public static List<string> UserWords(IEnumerable<string?>? configured)
     {
-        if (nic.NetworkInterfaceType is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel)
+        var words = (configured ?? Enumerable.Empty<string?>()).Where(w => !string.IsNullOrWhiteSpace(w))
+            .Select(w => w!.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var legacyCore = new[] { "hyper-v", "virtual switch", "wsl", "teredo", "wan miniport", "bluetooth" };
+        var legacy = legacyCore.All(old => words.Contains(old, StringComparer.OrdinalIgnoreCase));
+        return legacy ? words.Where(w => !OldDefaults.Contains(w)).ToList() : words;
+    }
+
+    public static bool IsServiceAdapter(NetworkInterface nic, IEnumerable<string?>? userWords = null) =>
+        IsServiceAdapter(nic.NetworkInterfaceType, nic.Name, nic.Description, userWords);
+
+    public static bool IsServiceAdapter(NetworkInterfaceType type, string name, string description, IEnumerable<string?>? userWords = null)
+    {
+        if (type is NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel)
         {
             return true;
         }
-        var text = $"{nic.Name} {nic.Description}";
-        return BuiltInWords.Concat(userWords ?? Enumerable.Empty<string>())
-            .Any(word => text.Contains(word, StringComparison.OrdinalIgnoreCase));
+        var text = $"{name} {description}";
+        return BuiltInWords.Concat((userWords ?? Enumerable.Empty<string?>()).OfType<string>())
+            .Any(word => !string.IsNullOrWhiteSpace(word) && text.Contains(word.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Explicit roles override automatic service filtering.</summary>
+    public static bool ShouldIgnore(NetworkInterfaceType type, string name, string description, string? role, IEnumerable<string?>? userWords = null) =>
+        NormalizeRole(role) is { } chosen ? chosen == "Ignore" : IsServiceAdapter(type, name, description, userWords);
+
+    /// <summary>Preserve roles of adapters absent from the settings list.</summary>
+    public static JsonObject SaveRoles(JsonObject? existing, IEnumerable<(string Name, string Role)> edited)
+    {
+        var roles = existing?.DeepClone().AsObject() ?? new JsonObject();
+        foreach (var (name, value) in edited)
+        {
+            // Windows names are case-insensitive; replace old spelling, avoiding duplicate JSON keys.
+            foreach (var key in roles.Select(r => r.Key).Where(k => string.Equals(k, name, StringComparison.OrdinalIgnoreCase)).ToArray())
+                roles.Remove(key);
+            if (NormalizeRole(value) is { } role)
+                roles[name] = role;
+        }
+        return roles;
     }
 }
