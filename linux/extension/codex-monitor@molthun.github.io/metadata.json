@@ -2,7 +2,12 @@
   "uuid": "codex-monitor@molthun.github.io",
   "name": "CodexMonitor",
   "description": "Desktop hardware monitor widget (Linux port of the CodexMonitor Rainmeter skin). Reads metrics written by codex-bridge.py.",
-  "shell-version": ["48", "49", "50"],
+  "shell-version": [
+    "48",
+    "49",
+    "50"
+  ],
   "url": "https://github.com/molthun/codex-monitor",
-  "version": 2
+  "version": 3,
+  "version-name": "2.2.1"
 }

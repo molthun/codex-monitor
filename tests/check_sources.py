@@ -1,5 +1,7 @@
 """Static checks that work on both CI platforms."""
 import ast
+import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 import subprocess
 import sys
@@ -21,3 +23,11 @@ assert names == copies, f"Payload file list differs: {names ^ copies}"
 for name in names:
     assert (primary / name).read_bytes() == (payload / name).read_bytes(), f"Payload differs: {name}"
 print("Source syntax and payload mirror checks passed.")
+
+version = (ROOT / "VERSION").read_text().strip()
+project = ET.parse(primary / "CodexBridge.csproj")
+assert project.findtext("PropertyGroup/Version") == version, "Bridge version differs from VERSION"
+metadata = json.loads((ROOT / "linux/extension/codex-monitor@molthun.github.io/metadata.json").read_text())
+assert metadata["version-name"] == version, "GNOME version differs from VERSION"
+assert f'"Version={version}"' in (primary / "SkinBuilder.cs").read_text(), "Skin version differs from VERSION"
+print(f"Project version checks passed: {version}")

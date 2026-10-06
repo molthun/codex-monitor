@@ -17,7 +17,14 @@ rm -rf "$DATA/codex-monitor/plugins"
 mkdir -p "$DATA/codex-monitor/plugins" "$CONF/plugins"
 install -m755 "$SRC"/plugins/*.py "$DATA/codex-monitor/plugins/"
 # Release tag for the update check: set by update.sh, or taken from a git checkout.
-VERSION="${CODEX_MONITOR_VERSION:-$(git -C "$SRC" describe --tags 2>/dev/null || echo unknown)}"
+# Source checkouts carry the next project version; releases pass their exact tag.
+if [[ -n "${CODEX_MONITOR_VERSION:-}" ]]; then
+    VERSION="$CODEX_MONITOR_VERSION"
+elif [[ -f "$SRC/../VERSION" ]]; then
+    VERSION="v$(tr -d '\r\n' < "$SRC/../VERSION")-main"
+else
+    VERSION="$(git -C "$SRC" describe --tags 2>/dev/null || echo unknown)"
+fi
 echo "$VERSION" > "$DATA/codex-monitor/VERSION"
 echo "==> Version $VERSION"
 

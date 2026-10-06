@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.2.1 — 2026-10-06
 
 - Windows: prepare downloads before stopping the working installation; restore the previous installation and active skin when an update fails. Record the new version only after deployment succeeds.
 - Windows: reload watcher settings without signing out, including update mode, position margins and polling interval. Fix update icon copying and the tray's Restart widget action.

@@ -28,6 +28,13 @@ jobs:
         with:
           dotnet-version: '10.0.401'
 
+      - name: Check release version
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          $tagVersion = ($env:GITHUB_REF_NAME -replace '^v', '') -replace '-.*$', ''
+          if ($tagVersion -ne $version) { throw "Tag version $tagVersion differs from project version $version." }
+
       - name: Publish bridge (self-contained, single file)
         run: dotnet publish windows/CodexBridge/CodexBridge.csproj -c Release -p:RestoreLockedMode=true -warnaserror
 
