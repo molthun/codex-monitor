@@ -56,7 +56,7 @@ config.json
 config.example.json
 ```
 
-Edit `config.json` directly on your workstation. Scripts pick it up on the next run; long-running services should be restarted after config changes.
+Edit `config.json` directly on your workstation. The bridge and display watcher pick up changes automatically.
 
 To install and configure everything from scratch on a clean PC, download **`Install-CodexMonitor.cmd`**
 from the [latest release](https://github.com/molthun/codex-monitor/releases/latest) and double-click it,
@@ -143,3 +143,9 @@ presets: one layout in 1080p units (430 px wide) is scaled.
 
 With "Fit to screen height" (default) the widget shrinks when it would be taller than the screen,
 e.g. on a 1366×768 laptop. Hiding sections makes it shorter as well.
+
+### Update recovery
+
+Downloads are prepared before the bridge stops. Failed updates restore the previous installation and active skin. Successful updates keep the old installation in a sibling `CodexMonitor-backup-*` folder; it can be removed after verifying the update.
+
+For multiple identical NVIDIA cards, LibreHardwareMonitor remains the telemetry source because matching `nvidia-smi` models would be ambiguous.

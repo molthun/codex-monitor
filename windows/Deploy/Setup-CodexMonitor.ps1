@@ -80,12 +80,14 @@ $installScript = Join-Path $PSScriptRoot "Install-CodexMonitor.ps1"
 if (Test-Path -LiteralPath $installScript) {
     Write-Host "Deploying CodexMonitor widget and registering background tasks..." -ForegroundColor Cyan
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installScript
+    if ($LASTEXITCODE -ne 0) { throw "Deploying CodexMonitor failed with exit code $LASTEXITCODE." }
 }
 
 # Then the settings window, to pick size, sections, fans, drives and speeds.
 $wizardScript = Join-Path $PSScriptRoot "Configure-CodexMonitor.ps1"
 if (Test-Path -LiteralPath $wizardScript) {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $wizardScript
+    if ($LASTEXITCODE -ne 0) { throw "Opening settings failed with exit code $LASTEXITCODE." }
 }
 
 Write-Host ""

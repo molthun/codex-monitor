@@ -119,7 +119,12 @@ sealed class WidgetControl
     }
 
     /// <summary>Restart button: bridge and skin, like after an update.</summary>
-    public void RestartWidget() => ApplySettings();
+    public void RestartWidget()
+    {
+        RestartBridge();
+        Thread.Sleep(3000);
+        RebuildSkin();
+    }
 
     public void SetVisible(bool visible)
     {

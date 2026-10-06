@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../windows/CodexBridge/NetPanel.cs" Link="NetPanel.cs" />
+    <Compile Include="../../windows/CodexBridge/NvidiaTelemetry.cs" Link="NvidiaTelemetry.cs" />
+    <Compile Include="../../windows/CodexBridge/AppConfig.cs" Link="AppConfig.cs" />
+    <Compile Include="../../windows/CodexBridge/TempsFile.cs" Link="TempsFile.cs" />
+    <Compile Include="../../windows/CodexBridge/SkinBuilder.cs" Link="SkinBuilder.cs" />
+  </ItemGroup>
+</Project>

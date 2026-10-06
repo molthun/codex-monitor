@@ -1,0 +1,37 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check syntax and payload mirror
+        run: python tests/check_sources.py
+      - name: Linux regressions
+        if: runner.os == 'Linux'
+        run: python -m unittest discover -s tests -p 'test_*.py'
+      - name: Windows installer and updater regressions
+        shell: pwsh
+        run: ./tests/test_windows.ps1
+      - name: Portable C# regressions
+        run: dotnet run --project tests/CodexBridge.Tests/CodexBridge.Tests.csproj -c Release
+      - name: Build bridge with locked dependencies
+        run: dotnet build windows/CodexBridge/CodexBridge.csproj -c Release -p:EnableWindowsTargeting=true -p:RestoreLockedMode=true -warnaserror

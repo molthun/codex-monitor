@@ -4,7 +4,8 @@ param(
     [string]$ConfigPath = ""
 )
 
-$ErrorActionPreference = "SilentlyContinue"
+$ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "Deploy\Install-Transaction.ps1")
 
 function Read-CodexConfig {
     param([string]$Path)
@@ -17,8 +18,28 @@ function Read-CodexConfig {
 }
 
 $config = Read-CodexConfig -Path $ConfigPath
+$intervalArgument = $IntervalSeconds
 if ($config.installRoot -and $InstallRoot -eq "C:\CodexMonitor") { $InstallRoot = $config.installRoot }
 if ($config.display.watchIntervalSeconds -ne $null -and $IntervalSeconds -eq 5) { $IntervalSeconds = [int]$config.display.watchIntervalSeconds }
+
+function Update-CodexConfig {
+    try {
+        $next = Read-CodexConfig -Path $ConfigPath
+        $json = $next | ConvertTo-Json -Depth 20 -Compress
+        if ($json -eq $script:configJson) { return }
+        $script:config = $next
+        $script:configJson = $json
+        $script:lastUpdateCheck = [System.DateTime]::MinValue
+        $script:lastSignature = ""
+        $script:skinHardwareTried = ""
+        $script:IntervalSeconds = if ($intervalArgument -eq 5 -and $next.display.watchIntervalSeconds -ne $null) {
+            [Math]::Max(1, [int]$next.display.watchIntervalSeconds)
+        } else { $intervalArgument }
+        if ((Get-UpdateMode) -eq "off") { Set-UpdateStatus "" }
+    } catch {
+        # A malformed/partial manual edit must not discard the last valid settings.
+    }
+}
 
 function Test-Command {
     param([string]$Name)
@@ -252,116 +273,85 @@ function Check-ForUpdates {
 function Install-Release {
     param([string]$Remote)
 
-    $versionFile = Join-Path $InstallRoot ".local_version"
     $taskName = if ($config.bridge.taskName) { $config.bridge.taskName } else { "CodexMonitor Bridge Elevated" }
-    Write-Host "Installing release $remote. Downloading updates..."
-    Show-Notification "CodexMonitor Update" "Installing CodexMonitor $remote from GitHub..."
-
-    # 1. Download the source for this tag (scripts, skin, presets - not the exe).
-    $zipUrl = "https://github.com/molthun/codex-monitor/archive/refs/tags/$remote.zip"
-    $tempZip = Join-Path $env:TEMP "codex-monitor-$remote.zip"
-    $tempExtract = Join-Path $env:TEMP "codex-monitor-extract"
-
-    if (Test-Path -LiteralPath $tempZip) { Remove-Item -LiteralPath $tempZip -Force }
-    if (Test-Path -LiteralPath $tempExtract) { Remove-Item -LiteralPath $tempExtract -Recurse -Force }
-
-    Invoke-WebRequest -Uri $zipUrl -OutFile $tempZip -UseBasicParsing
-    Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
-
-    $extractedRepoDir = Get-ChildItem -Path $tempExtract -Directory | Select-Object -First 1
-    if (-not $extractedRepoDir) {
-        throw "Failed to locate extracted repository directory in ZIP."
-    }
-    $extractedRepoDir = $extractedRepoDir.FullName
-    # Releases keep the Windows version in windows\ (Linux lives in linux\); older ones at the root.
-    $windowsDir = Join-Path $extractedRepoDir "windows"
-    if (Test-Path -LiteralPath (Join-Path $windowsDir "Deploy")) {
-        $extractedRepoDir = $windowsDir
-    }
-
-    # 2. Download the precompiled bridge exe attached to the release.
-    $bridgeAsset = Join-Path $env:TEMP "CodexBridge-$remote.exe"
-    if (Test-Path -LiteralPath $bridgeAsset) { Remove-Item -LiteralPath $bridgeAsset -Force }
-    $exeUrl = "https://github.com/molthun/codex-monitor/releases/download/$remote/CodexBridge.exe"
-    Invoke-WebRequest -Uri $exeUrl -OutFile $bridgeAsset -UseBasicParsing
-    if (-not (Test-Path -LiteralPath $bridgeAsset) -or (Get-Item -LiteralPath $bridgeAsset).Length -lt 1MB) {
-        throw "Downloaded CodexBridge.exe asset is missing or too small."
-    }
-
-    # Stop the bridge so its binary can be replaced. It runs elevated, so end it
-    # through its scheduled task first; Stop-Process covers the tray icon and manual runs.
-    schtasks.exe /end /tn $taskName 2>$null | Out-Null
-    Stop-Process -Name "CodexBridge" -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Milliseconds 500
-
-    # Copy source files to $InstallRoot, EXCLUDING config.json to preserve user settings.
-    Get-ChildItem -Path $extractedRepoDir -Recurse | ForEach-Object {
-        $relativePath = $_.FullName.Substring($extractedRepoDir.Length + 1)
-        $destPath = Join-Path $InstallRoot $relativePath
-
-        if ($_.PsIsContainer) {
-            New-Item -ItemType Directory -Path $destPath -Force | Out-Null
-        } else {
-            if ($relativePath -ieq "config.json") {
-                return
-            }
-
-            $parentDir = Split-Path $destPath
-            if (-not (Test-Path -LiteralPath $parentDir)) {
-                New-Item -ItemType Directory -Path $parentDir -Force | Out-Null
-            }
-
-            Copy-Item -LiteralPath $_.FullName -Destination $destPath -Force
-        }
-    }
-
-    # 3. Install the downloaded bridge binary into the run location.
-    $runBridgeExe = Join-Path $InstallRoot "CodexBridge\CodexBridge.exe"
-    New-Item -ItemType Directory -Force -Path (Split-Path $runBridgeExe) | Out-Null
-    Copy-Item -LiteralPath $bridgeAsset -Destination $runBridgeExe -Force
-
-    Remove-Item -LiteralPath $tempZip -Force
-    Remove-Item -LiteralPath $tempExtract -Recurse -Force
-    Remove-Item -LiteralPath $bridgeAsset -Force
-
-    Set-Content -LiteralPath $versionFile -Value $remote -Encoding UTF8
-
-    # Copy updated icons + preset to the active Rainmeter skin target.
-    $skinPath = Get-RainmeterSkinPath
-    $skinTarget = Join-Path $skinPath "CodexMonitor"
-    if (-not (Test-Path -LiteralPath $skinTarget)) {
-        throw "Rainmeter skin target was not found: $skinTarget"
-    }
-
-    $payloadIcons = Join-Path $InstallRoot "Deploy\Payload\@Resources\Icons"
-    $targetIcons = Join-Path $skinTarget "@Resources\Icons"
-    if (Test-Path -LiteralPath $payloadIcons) {
-        New-Item -ItemType Directory -Force -Path $targetIcons | Out-Null
-        Copy-Item -LiteralPath "$payloadIcons\*" -Destination $targetIcons -Force
-    }
-
-    # Regenerate the skin with the new bridge (its layout may have changed).
-    $switcher = Join-Path $InstallRoot "Deploy\Switch-WidgetSize.ps1"
-    Invoke-CheckedCommand -Description "Rebuild the skin" -Command {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $switcher -InstallRoot $InstallRoot -ConfigPath $(if ($ConfigPath) { $ConfigPath } else { Join-Path $InstallRoot "config.json" })
-    }
-
-    # Restart the elevated bridge task (task name from config).
-    Invoke-CheckedCommand -Description "Restart CodexBridge scheduled task" -Command { schtasks.exe /run /tn $taskName }
-
-    # Refresh Rainmeter.
+    $skinTarget = Join-Path (Get-RainmeterSkinPath) "CodexMonitor"
+    if (-not (Test-Path -LiteralPath $skinTarget)) { throw "Rainmeter skin was not found: $skinTarget" }
     $rainmeterExe = if ($config.rainmeter.executable) { $config.rainmeter.executable } else { "C:\Program Files\Rainmeter\Rainmeter.exe" }
-    if (Test-Path -LiteralPath $rainmeterExe) {
-        & $rainmeterExe !Refresh "CodexMonitor"
-        if ($LASTEXITCODE -ne 0) { throw "Rainmeter refresh failed with exit code $LASTEXITCODE." }
-    }
-    else {
-        throw "Rainmeter executable was not found: $rainmeterExe"
-    }
+    if (-not (Test-Path -LiteralPath $rainmeterExe)) { throw "Rainmeter was not found: $rainmeterExe" }
 
-    Set-UpdateStatus ""
-    Show-Notification "CodexMonitor Updated" "Widget has been updated to $remote successfully!"
-    Restart-AfterUpdate -BridgeExe $runBridgeExe
+    $work = Join-Path $env:TEMP "codex-monitor-$([guid]::NewGuid().ToString('N'))"
+    $stage = "$InstallRoot-stage-$([guid]::NewGuid().ToString('N'))"
+    $skinBackup = Join-Path $work "skin"
+    $rainmeterIni = Join-Path $env:APPDATA "Rainmeter\Rainmeter.ini"
+    $iniBackup = Join-Path $work "Rainmeter.ini"
+    try {
+        New-Item -ItemType Directory -Path $work | Out-Null
+        Show-Notification "CodexMonitor Update" "Downloading CodexMonitor $Remote..."
+        $zip = Join-Path $work "source.zip"
+        $extract = Join-Path $work "source"
+        Invoke-WebRequest -Uri "https://github.com/molthun/codex-monitor/archive/refs/tags/$Remote.zip" -OutFile $zip -UseBasicParsing
+        Expand-Archive -LiteralPath $zip -DestinationPath $extract
+        $source = (Get-ChildItem -LiteralPath $extract -Directory | Select-Object -First 1).FullName
+        if (-not $source) { throw "Release archive contains no project directory." }
+        if (Test-Path -LiteralPath (Join-Path $source "windows\Deploy")) { $source = Join-Path $source "windows" }
+        if (-not (Test-Path -LiteralPath (Join-Path $source "Deploy\Switch-WidgetSize.ps1"))) { throw "Release has no Windows deployment scripts." }
+
+        $asset = Join-Path $work "CodexBridge.exe"
+        Invoke-WebRequest -Uri "https://github.com/molthun/codex-monitor/releases/download/$Remote/CodexBridge.exe" -OutFile $asset -UseBasicParsing
+        if ((Get-Item -LiteralPath $asset).Length -lt 1MB) { throw "Downloaded bridge is too small." }
+        New-Item -ItemType Directory -Path $stage | Out-Null
+        # Preserve user files, including the config, while preparing all new files.
+        Get-ChildItem -LiteralPath $InstallRoot -Force | Copy-Item -Destination $stage -Recurse -Force
+        Get-ChildItem -LiteralPath $source -Force | Where-Object Name -ne "config.json" |
+            Copy-Item -Destination $stage -Recurse -Force
+        Copy-Item -LiteralPath $asset -Destination (Join-Path $stage "CodexBridge\CodexBridge.exe") -Force
+        $payloadExe = Join-Path $stage "Deploy\Payload\CodexBridge\CodexBridge.exe"
+        Copy-Item -LiteralPath $asset -Destination $payloadExe -Force
+        Copy-Item -LiteralPath $skinTarget -Destination $skinBackup -Recurse -Force
+        if (Test-Path -LiteralPath $rainmeterIni) { Copy-Item -LiteralPath $rainmeterIni -Destination $iniBackup }
+
+        $stopInstalledProcesses = {
+            schtasks.exe /end /tn $taskName 2>$null | Out-Null
+            # Ending an already stopped task is harmless; do not hide copy/apply failures.
+            Stop-Process -Name "CodexBridge" -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Milliseconds 500
+            # Capture settings once all settings/tray processes have stopped.
+            $liveConfig = Join-Path $InstallRoot "config.json"
+            if ((Test-Path -LiteralPath $stage) -and (Test-Path -LiteralPath $liveConfig)) {
+                Copy-Item -LiteralPath $liveConfig -Destination (Join-Path $stage "config.json") -Force
+            }
+        }
+        Invoke-CodexInstallTransaction -InstallRoot $InstallRoot -StageRoot $stage -Stop $stopInstalledProcesses -Apply {
+            $icons = Join-Path $InstallRoot "Deploy\Payload\@Resources\Icons"
+            $targetIcons = Join-Path $skinTarget "@Resources\Icons"
+            if (Test-Path -LiteralPath $icons) {
+                New-Item -ItemType Directory -Force -Path $targetIcons | Out-Null
+                Get-ChildItem -LiteralPath $icons -File | Copy-Item -Destination $targetIcons -Force
+            }
+            $switcher = Join-Path $InstallRoot "Deploy\Switch-WidgetSize.ps1"
+            Invoke-CheckedCommand -Description "Rebuild the skin" -Command {
+                & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $switcher -InstallRoot $InstallRoot -ConfigPath $(if ($ConfigPath) { $ConfigPath } else { Join-Path $InstallRoot "config.json" })
+            } | Out-Null
+            Invoke-CheckedCommand -Description "Restart the bridge" -Command { schtasks.exe /run /tn $taskName } | Out-Null
+            & $rainmeterExe !Refresh "CodexMonitor"
+            if ($LASTEXITCODE -ne 0) { throw "Rainmeter refresh failed." }
+            Set-Content -LiteralPath (Join-Path $InstallRoot ".local_version") -Value $Remote -Encoding UTF8
+        } -Recover {
+            # Restore the active skin as well as the installation folder.
+            Remove-Item -LiteralPath $skinTarget -Recurse -Force
+            Copy-Item -LiteralPath $skinBackup -Destination $skinTarget -Recurse -Force
+            if (Test-Path -LiteralPath $iniBackup) { Copy-Item -LiteralPath $iniBackup -Destination $rainmeterIni -Force }
+            Invoke-CheckedCommand -Description "Restore the bridge" -Command { schtasks.exe /run /tn $taskName } | Out-Null
+            Start-Process -FilePath (Join-Path $InstallRoot "CodexBridge\CodexBridge.exe") -ArgumentList "--tray --config `"$(Join-Path $InstallRoot 'config.json')`""
+            & $rainmeterExe !Refresh "CodexMonitor"
+        }
+        Set-UpdateStatus ""
+        Show-Notification "CodexMonitor Updated" "Widget has been updated to $Remote successfully!"
+    } finally {
+        if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+        if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
+    }
+    Restart-AfterUpdate -BridgeExe (Join-Path $InstallRoot "CodexBridge\CodexBridge.exe")
 }
 
 # Everything runs the new version without signing out: the tray icon starts again, and this
@@ -687,6 +677,7 @@ $lastPrereqCheck = [System.DateTime]::MinValue
 
 while ($true) {
     try {
+        Update-CodexConfig
         if ((Get-Date) -gt $lastUpdateCheck.AddHours(6)) {
             Check-ForUpdates
             $lastUpdateCheck = Get-Date

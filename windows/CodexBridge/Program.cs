@@ -124,6 +124,7 @@ List<string>? fileKeys = null;
 // Sensors seen during this run; once seen they stay, so a missed read never reshapes the skin.
 var seen = new CodexBridge.Available(false, false, false, false, false);
 
+string? selectedNvidiaName = null;
 var lastErrorLog = DateTime.MinValue;
 var networkPrevious = new Dictionary<string, (long Received, long Sent)>(StringComparer.OrdinalIgnoreCase);
 var networkPreviousAt = DateTime.UtcNow;
@@ -200,7 +201,8 @@ do
             ?? sensors.FirstOrDefault(s => isGpu(s) && s.Type == SensorType.Load && s.Name.Contains("Fan", StringComparison.OrdinalIgnoreCase));
         var gpuFanPct = gpuFanPctSensor?.Value;
 
-        var nvidiaGpu = gpu?.Type == HardwareType.GpuNvidia ? QueryNvidiaSmi() : null;
+        selectedNvidiaName = gpu?.Type == HardwareType.GpuNvidia ? gpu.Name : null;
+        var nvidiaGpu = selectedNvidiaName is not null ? QueryNvidiaSmi(selectedNvidiaName) : null;
         if (nvidiaGpu is not null)
         {
             gpuCore = nvidiaGpu.Value.Temp ?? gpuCore;
@@ -370,7 +372,7 @@ do
             lastErrorLog = DateTime.UtcNow;
         }
 
-        TryWriteNvidiaFallback(outFile, fileKeys);
+        TryWriteNvidiaFallback(outFile, fileKeys, selectedNvidiaName);
     }
 
     if (onceMode)
@@ -538,12 +540,12 @@ static string Round(float? value)
         : "-1";
 }
 
-static void TryWriteNvidiaFallback(string outFile, List<string>? keys)
+static void TryWriteNvidiaFallback(string outFile, List<string>? keys, string? selectedName)
 {
     try
     {
         var existing = ReadExisting(outFile);
-        var gpu = QueryNvidiaSmi();
+        var gpu = selectedName is not null ? QueryNvidiaSmi(selectedName) : null;
         if (gpu is null || keys is null)
         {
             return;
@@ -605,12 +607,12 @@ static string Get(Dictionary<string, string> values, string key)
     return values.TryGetValue(key, out var value) ? value : "0";
 }
 
-static (float? Temp, float? FanPct, float? VramUsedMb, float? VramTotalMb)? QueryNvidiaSmi()
+static (float? Temp, float? FanPct, float? VramUsedMb, float? VramTotalMb)? QueryNvidiaSmi(string selectedName)
 {
     var psi = new ProcessStartInfo
     {
         FileName = "nvidia-smi.exe",
-        Arguments = "--query-gpu=temperature.gpu,fan.speed,memory.used,memory.total --format=csv,noheader,nounits",
+        Arguments = "--query-gpu=name,temperature.gpu,fan.speed,memory.used,memory.total --format=csv,noheader,nounits",
         RedirectStandardOutput = true,
         RedirectStandardError = true,
         UseShellExecute = false,
@@ -630,6 +632,7 @@ static (float? Temp, float? FanPct, float? VramUsedMb, float? VramTotalMb)? Quer
         // classic ReadToEnd/WaitForExit deadlock), and enforce a hard timeout. If
         // nvidia-smi hangs we kill it instead of blocking the whole bridge loop.
         var outputTask = process.StandardOutput.ReadToEndAsync();
+        _ = process.StandardError.ReadToEndAsync();
         if (!process.WaitForExit(3000))
         {
             try { process.Kill(entireProcessTree: true); } catch { }
@@ -647,17 +650,7 @@ static (float? Temp, float? FanPct, float? VramUsedMb, float? VramTotalMb)? Quer
             return null;
         }
 
-        var parts = output.Split(',', StringSplitOptions.TrimEntries);
-        if (parts.Length < 2)
-        {
-            return null;
-        }
-
-        return (
-            ParseFloat(parts[0]),
-            ParseFloat(parts[1]),
-            parts.Length > 2 ? ParseFloat(parts[2]) : null,
-            parts.Length > 3 ? ParseFloat(parts[3]) : null);
+        return CodexBridge.NvidiaTelemetry.Parse(output, selectedName);
     }
     catch
     {
@@ -667,13 +660,6 @@ static (float? Temp, float? FanPct, float? VramUsedMb, float? VramTotalMb)? Quer
     {
         process?.Dispose();
     }
-}
-
-static float? ParseFloat(string value)
-{
-    return float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
-        ? parsed
-        : null;
 }
 
 static (double EthInMbps, double EthOutMbps, double WifiInMbps, double WifiOutMbps, double WifiApInMbps, double WifiApOutMbps, string WifiActiveMode, double WifiActiveInMbps, double WifiActiveOutMbps, double WifiActiveDlMbps, double WifiActiveUlMbps) QueryNetworkRates(

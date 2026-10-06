@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Windows: prepare downloads before stopping the working installation; restore the previous installation and active skin when an update fails. Record the new version only after deployment succeeds.
+- Windows: reload watcher settings without signing out, including update mode, position margins and polling interval. Fix update icon copying and the tray's Restart widget action.
+- Windows: parse NVIDIA telemetry per selected model; ambiguous identical models keep LibreHardwareMonitor readings instead of mixing cards.
+- Windows and Linux: do not inflate LAN estimates with unattributed UDP/QUIC traffic; scale TCP rates down only when they exceed interface totals.
+- Linux: generate the systemd service for the actual XDG data/config directories, with escaped paths.
+- Include config and version in Windows backups; refresh deployment and contributor documentation.
+- Pin the .NET SDK and package dependencies, keep NuGet lock files, and run syntax, payload mirror, regression and build checks on PRs and before releases.
+
 ## 2026-10-02
 
 - Linux: top bar icon (GNOME's tray) with Settings, Check for updates, Restart widget and a Show widget switch.

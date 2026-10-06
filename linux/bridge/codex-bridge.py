@@ -954,10 +954,11 @@ def traffic_split(net, split_rates, procs, procs_ok, top_n, icons):
         mode = "exact"
         wan_down, wan_up, lan_down, lan_up = split_rates
     else:
-        # Scale the interface totals by the TCP Internet/LAN ratio; unattributed traffic counts as Internet.
+        # Keep measured LAN TCP; scale down only when TCP counters exceed interface totals.
+        # Unattributed traffic counts as Internet instead of inflating LAN.
         mode = "estimate" if procs_ok else "none"
-        lan_down = min(down * tcp[2] / (tcp[0] + tcp[2]), down) if tcp[0] + tcp[2] > 0 else 0.0
-        lan_up = min(up * tcp[3] / (tcp[1] + tcp[3]), up) if tcp[1] + tcp[3] > 0 else 0.0
+        lan_down = max(0.0, tcp[2]) * min(1.0, down / (tcp[0] + tcp[2])) if tcp[0] + tcp[2] > 0 else 0.0
+        lan_up = max(0.0, tcp[3]) * min(1.0, up / (tcp[1] + tcp[3])) if tcp[1] + tcp[3] > 0 else 0.0
         wan_down, wan_up = down - lan_down, up - lan_up
 
     top = sorted(procs.items(), key=lambda kv: -sum(kv[1]))
